@@ -1,0 +1,17 @@
+{
+  "entities": {
+    "announcements": {
+      "title": "System Announcements",
+      "description": "Platform-wide broadcasts",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "targetTenantId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "severity": { "type": "string" }
+      },
+      "required": ["id", "title", "message"]
+    }
+  }
+}
