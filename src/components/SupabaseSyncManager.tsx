@@ -23,7 +23,8 @@ import {
   Trash2,
   Key,
   Eye,
-  EyeOff
+  EyeOff,
+  X
 } from 'lucide-react';
 import {
   getSupabaseConfig,
@@ -37,11 +38,13 @@ import {
 interface SupabaseSyncManagerProps {
   onMigrationComplete?: () => void;
   className?: string;
+  onClose?: () => void;
 }
 
 export const SupabaseSyncManager: React.FC<SupabaseSyncManagerProps> = ({
   onMigrationComplete,
-  className = ''
+  className = '',
+  onClose
 }) => {
   const [config, setConfig] = useState(getSupabaseConfig());
   const [urlInput, setUrlInput] = useState(config.url);
@@ -191,6 +194,16 @@ export const SupabaseSyncManager: React.FC<SupabaseSyncManagerProps> = ({
                 <AlertCircle size={14} className="text-amber-400" />
                 Not Configured
               </span>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer border border-slate-700"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
             )}
           </div>
         </div>
