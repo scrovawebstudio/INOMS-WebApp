@@ -1,5 +1,6 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "inoms"
+main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 
 [assets]
@@ -8,3 +9,10 @@ not_found_handling = "single-page-application"
 
 [vars]
 NODE_VERSION = "20"
+MASTER_PIN = "814986"
+MASTER_ADMIN_PIN = "814986"
+# Set your Supabase credentials in Cloudflare dashboard or here:
+# SUPABASE_URL = "https://your-project.supabase.co"
+# SUPABASE_ANON_KEY = "your-supabase-anon-key"
+
+

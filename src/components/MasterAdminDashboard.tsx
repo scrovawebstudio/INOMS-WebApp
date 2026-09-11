@@ -56,6 +56,7 @@ import MasterAdminPricing from './MasterAdminPricing';
 import MasterAdminBilling from './MasterAdminBilling';
 import DirectRenewalQueue from './DirectRenewalQueue';
 import WhatsAppRenewalNoticeModal, { WhatsAppSvgIcon } from './WhatsAppRenewalNoticeModal';
+import SupabaseSyncManager from './SupabaseSyncManager';
 
 interface MasterAdminDashboardProps {
   tenants: TenantOrg[];
@@ -104,8 +105,8 @@ export default function MasterAdminDashboard({
   onUpdateSaasInvoice: propOnUpdateSaasInvoice,
   onDeleteSaasInvoice: propOnDeleteSaasInvoice
 }: MasterAdminDashboardProps) {
-  // Navigation Tabs: Accounts / Direct UPI Renewals / Plan Price Set / SaaS Billing
-  const [masterTab, setMasterTab] = useState<'accounts' | 'renewals' | 'pricing' | 'billing'>('accounts');
+  // Navigation Tabs: Accounts / Direct UPI Renewals / Plan Price Set / SaaS Billing / Supabase Cloud
+  const [masterTab, setMasterTab] = useState<'accounts' | 'renewals' | 'pricing' | 'billing' | 'supabase'>('accounts');
   const [preSelectedBillingTenantId, setPreSelectedBillingTenantId] = useState<string | null>(null);
   const [isSyncingServer, setIsSyncingServer] = useState<boolean>(false);
 
@@ -892,6 +893,22 @@ Login Page: Access with registered mobile and PIN on the portal.`;
           <span>SaaS Bill Generation & Invoices</span>
           <span className="bg-emerald-50 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full border border-emerald-200">
             {saasInvoices.length} Bills
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMasterTab('supabase')}
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl whitespace-nowrap transition cursor-pointer ${
+            masterTab === 'supabase'
+              ? 'bg-white text-slate-900 shadow-sm font-extrabold ring-2 ring-emerald-500/30'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Database className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Supabase Database & Migration</span>
+          <span className="bg-emerald-50 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full border border-emerald-200">
+            Cloud Sync
           </span>
         </button>
       </div>
@@ -1920,6 +1937,13 @@ Login Page: Access with registered mobile and PIN on the portal.`;
       onApproveRenewal={handleApproveRenewal}
       onRejectRenewal={handleRejectRenewal}
     />
+  )}
+
+  {/* Tab 5: Supabase Cloud Database & Data Migration */}
+  {masterTab === 'supabase' && (
+    <div className="space-y-6">
+      <SupabaseSyncManager />
+    </div>
   )}
 
 

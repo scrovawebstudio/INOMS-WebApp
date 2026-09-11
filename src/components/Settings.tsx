@@ -76,6 +76,7 @@ import {
   fetchOwnOrganizationPinViaApi
 } from '../lib/api';
 import { bootstrapTenantFromHomeServer, replaceLocalCollection } from '../lib/localDb';
+import SupabaseSyncManager from './SupabaseSyncManager';
 
 interface SettingsProps {
   activeTenantId?: string;
@@ -171,7 +172,7 @@ export default function SettingsComponent({
 }: SettingsProps) {
   const features = getTenantFeatures(tenantFeatures);
   const currentTenantId = activeTenantId || 'org-admin';
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'theme' | 'backup' | 'masters' | 'admin' | 'localserver'>('profile');
+  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'theme' | 'backup' | 'masters' | 'admin' | 'localserver' | 'supabase'>('profile');
   const [showMicrosoftAuthQRModal, setShowMicrosoftAuthQRModal] = useState<boolean>(false);
   const [showHubModal, setShowHubModal] = useState<boolean>(false);
 
@@ -1657,9 +1658,9 @@ export default function SettingsComponent({
         {/* Horizontal Navigation Menu */}
         <div className="flex border-b border-slate-100 mt-1 gap-1 text-[11px] font-bold overflow-x-auto pb-0.5">
           {(((userRole === 'Admin' || userRole === 'Master Admin' || !currentUser || currentUser.role === 'Admin' || currentTenantId === 'org-admin')
-            ? ['profile', 'theme', 'backup', 'masters', 'admin', 'localserver']
-            : ['profile', 'theme', 'backup', 'localserver']
-          ) as Array<'profile' | 'theme' | 'backup' | 'masters' | 'admin' | 'localserver'>).map((tab) => (
+            ? ['profile', 'theme', 'backup', 'masters', 'admin', 'localserver', 'supabase']
+            : ['profile', 'theme', 'backup', 'localserver', 'supabase']
+          ) as Array<'profile' | 'theme' | 'backup' | 'masters' | 'admin' | 'localserver' | 'supabase'>).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSubTab(tab)}
@@ -1693,6 +1694,12 @@ export default function SettingsComponent({
                 <>
                   <Wifi className="w-3.5 h-3.5" />
                   <span>Workshop Wi-Fi Hub & Sync</span>
+                </>
+              )}
+              {tab === 'supabase' && (
+                <>
+                  <Database className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-emerald-700">Supabase Cloud & Migration</span>
                 </>
               )}
             </button>
@@ -4200,6 +4207,13 @@ export default function SettingsComponent({
             activeTenant={activeTenant}
             currentUser={currentUser}
           />
+        </div>
+      )}
+
+      {/* SUB-TAB 7: Supabase Cloud Database & Migration */}
+      {activeSubTab === 'supabase' && (
+        <div className="space-y-6" id="settings-supabase">
+          <SupabaseSyncManager />
         </div>
       )}
 

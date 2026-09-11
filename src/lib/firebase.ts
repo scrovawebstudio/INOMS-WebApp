@@ -20,6 +20,14 @@ import {
   markTenantDeletedInStorage,
   unmarkTenantDeletedInStorage
 } from './storage';
+import {
+  isSupabaseConfigured,
+  syncCollectionToSupabase,
+  syncCompanyConfigToSupabase,
+  syncTenantToSupabase,
+  deleteTenantFromSupabase,
+  fetchCollectionFromSupabase
+} from './supabase';
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const auth = getAuth(app);
 
@@ -271,6 +279,13 @@ export async function saveTenantToFirestore(tenant: TenantOrg): Promise<{ succes
       unmarkTenantDeletedInStorage(confirmedOrg.id);
     }
 
+    // Direct Supabase Cloud Sync
+    if (isSupabaseConfigured()) {
+      syncTenantToSupabase(confirmedOrg).catch(err => {
+        console.warn('[Supabase Sync] organization update error:', err?.message || err);
+      });
+    }
+
     // 1. Authoritative server confirmed update -> Commit to local cache and subscribers
     try {
       const raw = getAppStorageItem('tenants_v3') || localStorage.getItem('tenants_v3');
@@ -371,6 +386,12 @@ export async function deleteTenantFromFirestore(tenantId: string): Promise<void>
     if (!result?.success) {
       throw new Error(result?.error || result?.message || 'Server rejected organization deletion');
     }
+
+    if (isSupabaseConfigured()) {
+      deleteTenantFromSupabase(tenantId).catch(err => {
+        console.warn('[Supabase Sync] organization delete error:', err?.message || err);
+      });
+    }
   } finally {
     inFlightTenantUpdates.delete(tenantId);
   }
@@ -406,6 +427,13 @@ export async function saveCompanyConfigToFirestore(tenantId: string, config: Com
   if (!tenantId) return;
   setAppStorageItem(`company_config_${tenantId}`, JSON.stringify(config));
   await saveLocalRecord(tenantId, 'config', { ...config, id: tenantId });
+
+  if (isSupabaseConfigured()) {
+    syncCompanyConfigToSupabase(tenantId, config).catch(err => {
+      console.warn('[Supabase Sync] company config error:', err?.message || err);
+    });
+  }
+
   if (!isHomeServerSyncEnabledForTenant(tenantId)) return;
   try {
     saveTenantCollectionViaApi(tenantId, 'config', undefined, config).catch(() => {});
@@ -519,5 +547,12 @@ export async function saveTenantCollectionToFirestore(
   const res = await saveTenantCollectionViaApi(tenantId, collectionName, safeItems, deletedIds, true);
   if (res && res.success === false) {
     throw new Error(res.message || `Failed to persist ${collectionName} to server`);
+  }
+
+  // 4. Direct Supabase Cloud Sync
+  if (isSupabaseConfigured()) {
+    syncCollectionToSupabase(tenantId, collectionName, safeItems, deletedIds).catch(err => {
+      console.warn(`[Supabase Sync] ${collectionName} collection error:`, err?.message || err);
+    });
   }
 }
