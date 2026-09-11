@@ -46,8 +46,21 @@ export function getSupabaseConfig(): SupabaseConfig {
 
   if (!url) {
     const metaEnv = (import.meta as any)?.env;
-    url = (metaEnv?.VITE_SUPABASE_URL || '').trim();
-    anonKey = anonKey || (metaEnv?.VITE_SUPABASE_ANON_KEY || '').trim();
+    url = (
+      metaEnv?.VITE_SUPABASE_URL ||
+      metaEnv?.VITE_SUPABASE_PROJECT_URL ||
+      metaEnv?.SUPABASE_URL ||
+      metaEnv?.SUPABASE_PROJECT_URL ||
+      ''
+    ).trim();
+    anonKey = (
+      anonKey ||
+      metaEnv?.VITE_SUPABASE_ANON_KEY ||
+      metaEnv?.VITE_ANON_KEY ||
+      metaEnv?.SUPABASE_ANON_KEY ||
+      metaEnv?.ANON_KEY ||
+      ''
+    ).trim();
   }
 
   const isConfigured = Boolean(url && anonKey && url.startsWith('http'));
@@ -103,6 +116,31 @@ export function clearSupabaseConfig(): void {
   cachedClient = null;
   lastUrl = '';
   lastKey = '';
+}
+
+/**
+ * Automatically fetch Supabase configuration from Cloudflare Edge / Server /api/config
+ * if not already set locally.
+ */
+export async function initSupabaseFromRemoteConfig(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const current = getSupabaseConfig();
+  if (current.isConfigured) return;
+
+  try {
+    const res = await fetch('/api/config', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data?.success && data.supabaseUrl && data.supabaseAnonKey) {
+        saveSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey);
+        console.log('[Supabase] Auto-configured from Cloudflare / server environment variables');
+      }
+    }
+  } catch (err) {
+    // Offline or static fallback
+  }
 }
 
 export async function testSupabaseConnection(

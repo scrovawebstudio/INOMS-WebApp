@@ -269,7 +269,6 @@ CREATE INDEX IF NOT EXISTS idx_expenses_tenant ON public.expenses(tenant_id);
 -- =========================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- =========================================================================
--- Enable RLS on all tables
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -286,7 +285,6 @@ ALTER TABLE public.problems ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Anonymous and Authenticated Access Policies (Permits direct client SDK access)
 DO $$
 DECLARE
     tbl text;
@@ -303,10 +301,7 @@ BEGIN
     END LOOP;
 END $$;
 
--- =========================================================================
--- REALTIME SUBSCRIPTIONS
--- =========================================================================
--- Enable Supabase Realtime publication on primary operational tables
+-- Enable Realtime
 DO $$
 BEGIN
     BEGIN
@@ -318,22 +313,17 @@ BEGIN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
     EXCEPTION
         WHEN OTHERS THEN
-            -- publication may already exist or table already added
             NULL;
     END;
 END $$;
 
--- =========================================================================
--- SEED ESSENTIAL INITIAL RECORDS
--- =========================================================================
--- Insert Master Admin Organization if not already present
+-- Seeds
 INSERT INTO public.organizations (
     id, name, code, owner_mobile, owner_name, status, secret_key, pin, subscription_plan, trial_days, is_trial
 ) VALUES (
     'org-admin', 'Master System Admin', 'ADMIN-00', '8149862034', 'Master System Admin', 'active', '', '', 'lifetime', 0, 0
 ) ON CONFLICT (id) DO NOTHING;
 
--- Insert Default Demo Organization
 INSERT INTO public.organizations (
     id, name, code, owner_mobile, owner_name, status, secret_key, pin, subscription_plan, trial_days, is_trial
 ) VALUES (
