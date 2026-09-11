@@ -607,6 +607,36 @@ export async function connectGoogleDrive(
   );
 }
 
+// In-memory cache for resolved folder IDs to prevent redundant API queries
+const folderIdCache = new Map<string, string>();
+
+// In-memory record of the last uploaded data payload hash per tenant to prevent duplicate idle uploads
+const lastUploadedSnapshotHash = new Map<string, string>();
+const lastUploadedFileId = new Map<string, string>();
+const lastUploadedTimestamp = new Map<string, string>();
+
+/**
+ * Computes a fast deterministic string hash of the ERP data payload
+ */
+export function computeDataPayloadHash(payload: Record<string, any>): string {
+  if (!payload) return '';
+  try {
+    const str = JSON.stringify(payload);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return `${hash}_${str.length}`;
+  } catch (_) {
+    return String(Date.now());
+  }
+}
+
+export function clearDriveFolderCache() {
+  folderIdCache.clear();
+}
+
 /**
  * Disconnect Google Drive for a specific tenant or active tenant
  */
@@ -614,7 +644,11 @@ export function disconnectGoogleDrive(targetTenantId?: string): void {
   const tenantId = targetTenantId || currentActiveTenantId;
   if (tenantId) {
     removeSessionForTenant(tenantId);
+    lastUploadedSnapshotHash.delete(tenantId);
+    lastUploadedFileId.delete(tenantId);
+    lastUploadedTimestamp.delete(tenantId);
   }
+  clearDriveFolderCache();
   notifyListeners();
 }
 
@@ -707,6 +741,11 @@ export async function getOrCreateFolder(
   targetTenantId?: string
 ): Promise<string> {
   const tId = targetTenantId || currentActiveTenantId;
+  const cacheKey = `${tId}:${parentFolderId || 'root'}:${folderName}`;
+
+  if (folderIdCache.has(cacheKey)) {
+    return folderIdCache.get(cacheKey)!;
+  }
 
   let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   if (parentFolderId) {
@@ -722,7 +761,9 @@ export async function getOrCreateFolder(
   if (searchRes.ok) {
     const data = await searchRes.json();
     if (data.files && data.files.length > 0) {
-      return data.files[0].id;
+      const foundId = data.files[0].id;
+      folderIdCache.set(cacheKey, foundId);
+      return foundId;
     }
   }
 
@@ -749,6 +790,7 @@ export async function getOrCreateFolder(
             tId
           );
         } catch (_) {}
+        folderIdCache.set(cacheKey, legacyId);
         return legacyId;
       }
     }
@@ -779,6 +821,7 @@ export async function getOrCreateFolder(
   }
 
   const created = await createRes.json();
+  folderIdCache.set(cacheKey, created.id);
   return created.id;
 }
 
@@ -788,8 +831,25 @@ export async function getOrCreateFolder(
 export async function uploadSnapshotToDrive(
   tenantId: string,
   tenantName: string,
-  payload: Record<string, any>
-): Promise<{ success: boolean; fileId: string; fileName: string; webViewLink?: string; timestamp: string }> {
+  payload: Record<string, any>,
+  options: { force?: boolean } = {}
+): Promise<{ success: boolean; fileId: string; fileName: string; webViewLink?: string; timestamp: string; skipped?: boolean }> {
+  // Deduplication guard: compute data fingerprint. If unchanged and not forced, skip network upload completely
+  const currentHash = computeDataPayloadHash(payload);
+  const previousHash = lastUploadedSnapshotHash.get(tenantId);
+
+  if (!options.force && previousHash && previousHash === currentHash) {
+    const cachedFileId = lastUploadedFileId.get(tenantId) || '';
+    const cachedTimestamp = lastUploadedTimestamp.get(tenantId) || new Date().toISOString();
+    return {
+      success: true,
+      fileId: cachedFileId,
+      fileName: 'unchanged',
+      timestamp: cachedTimestamp,
+      skipped: true
+    };
+  }
+
   isSyncingState = true;
   notifyListeners();
 
@@ -923,12 +983,18 @@ export async function uploadSnapshotToDrive(
       localStorage.setItem(`inoms_drive_last_synced_at_${tenantId}`, timestamp);
     } catch (_) {}
 
+    // Store successful hash and file ID
+    lastUploadedSnapshotHash.set(tenantId, currentHash);
+    lastUploadedFileId.set(tenantId, fileData.id);
+    lastUploadedTimestamp.set(tenantId, timestamp);
+
     return {
       success: true,
       fileId: fileData.id,
       fileName: fileData.name,
       webViewLink: fileData.webViewLink,
-      timestamp
+      timestamp,
+      skipped: false
     };
   } finally {
     isSyncingState = false;

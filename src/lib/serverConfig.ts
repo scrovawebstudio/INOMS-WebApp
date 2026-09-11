@@ -49,6 +49,11 @@ export function getServerBaseUrl(): string {
   if (stored && stored.trim()) {
     return stored.trim().replace(/\/+$/, '');
   }
+  const metaEnv = (import.meta as any)?.env;
+  const envUrl = (metaEnv?.VITE_API_URL || metaEnv?.VITE_SERVER_BASE_URL || '') as string;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
   return '';
 }
 

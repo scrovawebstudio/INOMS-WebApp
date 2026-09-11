@@ -1691,8 +1691,8 @@ export default function SettingsComponent({
               )}
               {tab === 'localserver' && (
                 <>
-                  <Server className="w-3.5 h-3.5" />
-                  <span>Pro Server & LAN Sync</span>
+                  <Wifi className="w-3.5 h-3.5" />
+                  <span>Workshop Wi-Fi Hub & Sync</span>
                 </>
               )}
             </button>
@@ -2615,7 +2615,7 @@ export default function SettingsComponent({
         </div>
       )}
 
-      {/* SUB-TAB: Backup Settings (Local Machine PC & Home Server Cloud Backup) */}
+      {/* SUB-TAB: Backup Settings (Local Machine PC & Workshop Hub Wi-Fi Sync) */}
       {activeSubTab === 'backup' && (
         !(userRole === 'Admin' || userRole === 'Master Admin' || !currentUser || currentUser.role === 'Admin' || currentTenantId === 'org-admin') ? (
           <div className="space-y-6" id="settings-backup-staff">
@@ -2626,22 +2626,22 @@ export default function SettingsComponent({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base text-white tracking-tight flex items-center gap-2">
-                    <span>{homeServerSyncEnabled ? 'Home Server Auto-Sync Active' : 'Local-only Storage Active'}</span>
+                    <span>{homeServerSyncEnabled ? 'Workshop Hub Wi-Fi Sync Active' : 'Local-only Storage Active'}</span>
                     <span className="bg-emerald-400/20 text-emerald-300 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-400/30">
                       ✓ Staff Account Linked
                     </span>
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
                     {homeServerSyncEnabled
-                      ? 'Your technician/staff account continuously syncs job cards, invoices, client ledgers, and stock logs directly to the Organization Home Server database.'
-                      : 'This organisation is operating locally. Job cards, invoices, client ledgers, and stock logs are saved on this device.'}
+                      ? 'Your technician account continuously syncs job cards, remarks, and status updates directly to the Organization Account over your workshop Wi-Fi / LAN.'
+                      : 'This organisation is operating locally. Job cards and entries are stored on this device.'}
                   </p>
                 </div>
               </div>
 
               <div className="bg-white/10 p-4 rounded-xl border border-white/10 text-xs text-slate-200 space-y-2">
-                <p>• <strong>{homeServerSyncEnabled ? 'Real-Time Organization Updates' : 'Local Data Protection'}:</strong> {homeServerSyncEnabled ? 'Everything you enter on your machine automatically updates the Organization Owner account via the Home Server backend.' : 'Everything you enter is kept in this organisation\'s local storage until you export or back it up locally.'}</p>
-                <p>• <strong>Data Security Policy:</strong> Local JSON file downloads are restricted to Organization Owner accounts to prevent unauthorized data leaks from staff machines.</p>
+                <p>• <strong>{homeServerSyncEnabled ? 'Real-Time Workshop Updates' : 'Local Data Protection'}:</strong> {homeServerSyncEnabled ? 'Everything you update on your phone or PC automatically communicates to the Organization Account over the local Wi-Fi, which then backs up data to local storage and Google Drive.' : 'Everything you enter is kept in this organisation\'s local storage until backed up.'}</p>
+                <p>• <strong>Data Security Policy:</strong> Financial ledgers and full master JSON exports are restricted to Organization Owner accounts.</p>
               </div>
 
               <div className="pt-2 flex items-center gap-3">
@@ -2649,14 +2649,14 @@ export default function SettingsComponent({
                   type="button"
                   onClick={() => {
                     setLocalBackupSuccessMsg(homeServerSyncEnabled
-                      ? '✓ Synced latest staff entries directly with Home Server database!'
+                      ? '✓ Synced latest staff entries directly with Organization Workshop Hub!'
                       : '✓ Latest staff entries are safely stored on this device.');
                     setTimeout(() => setLocalBackupSuccessMsg(''), 5000);
                   }}
                   className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition cursor-pointer text-xs flex items-center gap-2 shadow-xs"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  <span>{homeServerSyncEnabled ? 'Sync with Home Server Now' : 'Confirm Local Save'}</span>
+                  <span>{homeServerSyncEnabled ? 'Sync with Workshop Hub Now' : 'Confirm Local Save'}</span>
                 </button>
               </div>
 
@@ -4066,7 +4066,7 @@ export default function SettingsComponent({
         </div>
       )}
 
-      {/* SUB-TAB 6: Pro Server & LAN Sync */}
+      {/* SUB-TAB 6: Workshop Wi-Fi Hub & Sync */}
       {activeSubTab === 'localserver' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-6" id="settings-localserver">
           {/* Header Banner */}
@@ -4074,27 +4074,37 @@ export default function SettingsComponent({
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="p-2 rounded-xl bg-purple-50 text-purple-700 border border-purple-200">
-                  <Server className="w-5 h-5" />
+                  <Wifi className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-slate-800 text-base">INOMS Pro Local Server & LAN Synchronization Hub</h3>
+                <h3 className="font-bold text-slate-800 text-base">Organisation Workshop Wi-Fi Hub & Technician Sync</h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
                   Pro Feature
                 </span>
               </div>
               <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
-                For Pro organizations, the workshop local PC/Server acts as the <strong>central local communication point</strong>.
-                Technicians connect directly over your workshop Wi-Fi / Local Area Network (LAN) without depending on external cloud services or tunnels.
+                Your workshop PC acts as the <strong>central local Wi-Fi Hub</strong>. Technicians on Android smartphones or laptops connect to the same Wi-Fi, link directly to your Organisation Account, and submit repair updates. Your Organisation Account receives these updates and backs them up to Local Storage & Google Drive. <strong>No external office server sync involved.</strong>
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowHubModal(true)}
-              className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer self-start shrink-0"
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Open Server Hub & QR Pairing</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
+              <a
+                href="/Inoms-android.apk"
+                download="Inoms-android.apk"
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
+                title="Download INOMS Android Application APK (Inoms-android.apk)"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Android App (.APK)</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowHubModal(true)}
+                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Open Wi-Fi Hub & QR Pairing</span>
+              </button>
+            </div>
           </div>
 
           {/* Capability check */}
@@ -4102,11 +4112,11 @@ export default function SettingsComponent({
             <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3">
               <div className="flex items-center gap-2 font-bold text-sm">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                <span>INOMS Pro Plan Required for Local Server & Native Android LAN Sync</span>
+                <span>INOMS Pro Plan Required for Workshop Wi-Fi Hub & Technician Android Sync</span>
               </div>
               <p className="text-xs leading-relaxed text-amber-800">
                 Your organization is currently on the <strong>{activeTenant?.subscriptionPlan || 'Basic'}</strong> plan.
-                The Central Local Server, SQLite/PostgreSQL local persistence, and real-time Android Technician LAN Sync are exclusive capabilities of the <strong>INOMS Pro Plan</strong>.
+                The Workshop Wi-Fi Hub, direct Technician Android/PC LAN Link, and automated Google Drive backups are exclusive capabilities of the <strong>INOMS Pro Plan</strong>.
               </p>
               <div className="flex items-center gap-3 pt-1">
                 <span className="text-xs font-semibold text-amber-900">
@@ -4121,30 +4131,30 @@ export default function SettingsComponent({
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-800">
                     <Server className="w-4 h-4 text-purple-600" />
-                    <span>Central Hub Architecture</span>
+                    <span>Organisation PC is the Hub</span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    The Workshop PC Server is the authoritative hub. Technicians send changes to the server; browsers receive updates from the server.
+                    The Workshop PC running this Organisation Account is the master hub. Technicians link directly to this PC, keeping data 100% inside your premises.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-800">
                     <Wifi className="w-4 h-4 text-teal-600" />
-                    <span>Pure LAN / Wi-Fi Sync</span>
+                    <span>Direct Workshop Wi-Fi Sync</span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Operates without Internet or Cloudflare tunnel dependencies. Even if your internet connection is down, technicians can update repair jobs locally.
+                    Operates over your local Wi-Fi without external office server or tunnel dependencies. Even if internet service drops, technicians update repair jobs locally.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-800">
-                    <Smartphone className="w-4 h-4 text-indigo-600" />
-                    <span>Android & Web App</span>
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                    <span>Automated Dual Backups</span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Pair technician smartphones via instant QR code scan or PIN. Scoped data access ensures technicians only see assigned repair jobs.
+                    Your Organisation Account collects all technician edits and automatically archives them to Local JSON Backups and your linked Google Drive.
                   </p>
                 </div>
               </div>
@@ -4154,20 +4164,31 @@ export default function SettingsComponent({
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold flex items-center gap-2 text-purple-200">
                     <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-                    <span>Manage Technician Pairing & Live LAN Sessions</span>
+                    <span>Link Technician Devices & Monitor Active Wi-Fi Sessions</span>
                   </h4>
                   <p className="text-xs text-purple-200/80 max-w-xl leading-relaxed">
-                    Generate temporary 6-digit pairing codes, view detected server IP addresses, test LAN connectivity, and inspect active technician devices.
+                    Generate temporary 6-digit pairing codes, view detected Wi-Fi IP addresses, test LAN connectivity, and inspect active technician smartphones/laptops.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHubModal(true)}
-                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-lg shrink-0 cursor-pointer flex items-center gap-2"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Launch Local Server Hub</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <a
+                    href="/Inoms-android.apk"
+                    download="Inoms-android.apk"
+                    className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition border border-white/20 flex items-center gap-2 cursor-pointer"
+                    title="Download INOMS Android APK directly"
+                  >
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    <span>Download APK</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowHubModal(true)}
+                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-lg cursor-pointer flex items-center gap-2"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Launch Workshop Wi-Fi Hub</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

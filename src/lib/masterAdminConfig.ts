@@ -165,3 +165,128 @@ export function getActiveFeatureAddons(pricingConfig?: AddonPricingConfig): Feat
   const list = cfg.featureAddons || DEFAULT_FEATURE_ADDONS;
   return list.filter(a => a.enabled !== false && !a.isCore);
 }
+
+export interface ResolvedPlanInfo {
+  key: string;
+  tier: 'basic' | 'business' | 'pro' | 'trial' | 'lifetime';
+  tierLabel: string;
+  tierBadgeClass: string;
+  title: string;
+  durationDays: number;
+  durationLabel: string;
+  amount: number;
+  badge?: string;
+  description?: string;
+  allowedModules: string[];
+  features: any;
+}
+
+/**
+ * Returns all configured subscription plan variations (combining pricing matrix config with special trial and lifetime options).
+ */
+export function getAllSubscriptionPlanVariations(pricingConfig?: AddonPricingConfig): SubscriptionPlanConfig[] {
+  const cfg = pricingConfig || loadMasterAdminPricingConfig();
+  const basePlans = cfg.subscriptionPlans && cfg.subscriptionPlans.length > 0
+    ? cfg.subscriptionPlans
+    : DEFAULT_SUBSCRIPTION_PLANS;
+  return basePlans;
+}
+
+/**
+ * Resolves comprehensive metadata (tier, duration, price, modules, features, badges) for any plan key or legacy string.
+ */
+export function resolvePlanInfo(planKeyOrString?: string, pricingConfig?: AddonPricingConfig): ResolvedPlanInfo {
+  const key = (planKeyOrString || 'basic_30d').toLowerCase().trim();
+  const allPlans = getAllSubscriptionPlanVariations(pricingConfig);
+
+  // 1. Special case: 7-Day Free Trial
+  if (key === 'trial' || key === 'free_trial') {
+    const basicTier = INOMS_TIER_PLANS.basic;
+    return {
+      key: 'trial',
+      tier: 'trial',
+      tierLabel: '🎁 Free Trial',
+      tierBadgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+      title: '7-Day Free Trial',
+      durationDays: 7,
+      durationLabel: '7 Days Trial',
+      amount: 0,
+      badge: 'Free Trial',
+      description: 'Standard 7-day complimentary trial with core repair features',
+      allowedModules: basicTier.allowedModules,
+      features: basicTier.features
+    };
+  }
+
+  // 2. Special case: Lifetime License
+  if (key === 'lifetime' || key === 'permanent') {
+    const proTier = INOMS_TIER_PLANS.pro;
+    return {
+      key: 'lifetime',
+      tier: 'lifetime',
+      tierLabel: '♾️ Lifetime License',
+      tierBadgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      title: 'INOMS Lifetime License',
+      durationDays: 3650,
+      durationLabel: 'Permanent Access',
+      amount: 0,
+      badge: 'Lifetime',
+      description: 'Permanent enterprise access with all modules & VIP features',
+      allowedModules: proTier.allowedModules,
+      features: {
+        ...proTier.features,
+        allowGoogleDriveSync: true,
+        allowHomeServerSync: true,
+        allowLiveQueue: true,
+        allowTechnicianAccounts: true
+      }
+    };
+  }
+
+  // 3. Normalized plan search (e.g. basic_30d, business_90d, pro_365d)
+  let matched = allPlans.find(p => p.key.toLowerCase() === key);
+
+  // 4. Backwards compatibility for legacy plan strings
+  if (!matched) {
+    if (key === 'monthly') matched = allPlans.find(p => p.key === 'basic_30d');
+    else if (key === 'quarterly') matched = allPlans.find(p => p.key === 'basic_90d');
+    else if (key === 'annual') matched = allPlans.find(p => p.key === 'basic_365d');
+    else if (key === 'basic') matched = allPlans.find(p => p.key === 'basic_30d');
+    else if (key === 'business') matched = allPlans.find(p => p.key === 'business_30d');
+    else if (key === 'pro') matched = allPlans.find(p => p.key === 'pro_30d');
+  }
+
+  // If still not matched, fallback to default basic_30d
+  const plan = matched || allPlans.find(p => p.key === 'basic_30d') || DEFAULT_SUBSCRIPTION_PLANS[2];
+  const tier = (plan.tier || 'basic') as 'basic' | 'business' | 'pro';
+  const tierConfig = INOMS_TIER_PLANS[tier] || INOMS_TIER_PLANS.basic;
+
+  const tierBadgeClass =
+    tier === 'pro'
+      ? 'bg-purple-100 text-purple-800 border-purple-300'
+      : tier === 'business'
+      ? 'bg-blue-100 text-blue-800 border-blue-300'
+      : 'bg-emerald-100 text-emerald-800 border-emerald-300';
+
+  const tierLabel =
+    tier === 'pro'
+      ? '🟣 INOMS Pro'
+      : tier === 'business'
+      ? '🔵 INOMS Business'
+      : '🟢 INOMS Basic';
+
+  return {
+    key: plan.key,
+    tier,
+    tierLabel,
+    tierBadgeClass,
+    title: plan.title,
+    durationDays: plan.durationDays,
+    durationLabel: plan.durationLabel,
+    amount: plan.amount,
+    badge: plan.badge,
+    description: plan.description,
+    allowedModules: tierConfig.allowedModules,
+    features: tierConfig.features
+  };
+}

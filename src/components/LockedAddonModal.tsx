@@ -107,17 +107,17 @@ const ADDON_DETAILS: Record<
     efficiencyGain: 'Secures your financial records while empowering engineers to work independently'
   },
   homeserver_sync: {
-    title: 'Central Cloud & Home Server Database Sync',
-    icon: '🔄',
-    tagline: 'Real-time multi-branch and offline local server backup replication',
+    title: 'Workshop Wi-Fi Hub & Technician Sync',
+    icon: '📶',
+    tagline: 'Direct Wi-Fi communication between shop PC and technician devices with automated backups',
     benefits: [
-      'Bi-directional synchronization between local shop server and cloud database',
-      'Offline-first resilience: Continue logging repairs during internet downtime',
-      'Automated nightly JSON & SQL database backups with instant restore point',
-      'Centralized multi-workshop branch visibility for business owners'
+      'Direct Wi-Fi link between technician Android/laptops and the Organisation Account',
+      'Instant job status, diagnostics, and part updates over local workshop Wi-Fi',
+      'Organisation Account automatically archives changes to Local Backup & Google Drive',
+      'No external office server dependency — works even if workshop internet is down'
     ],
     priceHint: '₹499 / month',
-    efficiencyGain: 'Guarantees zero data loss and flawless continuity during network outages'
+    efficiencyGain: 'Keeps workshop operations completely localized, lightning-fast, and automatically backed up'
   },
   custom: {
     title: 'Premium ERP Feature Add-on',

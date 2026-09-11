@@ -128,11 +128,11 @@ export default function MasterAdminBilling({
       });
     }
 
-    // 4. Home Server & LAN Sync Add-on
+    // 4. Workshop Wi-Fi Hub & Technician Sync Add-on
     if (features.allowHomeServerSync) {
       items.push({
         id: 'item-server-sync',
-        description: `Real-time Home Server & LAN Sync Bridge (${months} Mo)`,
+        description: `Workshop Wi-Fi Hub & Technician LAN Sync (${months} Mo)`,
         addonKey: 'homeServerSync',
         qty: months,
         rate: pricingConfig.homeServerSync,

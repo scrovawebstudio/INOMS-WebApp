@@ -45,8 +45,8 @@ export const MASTER_ADMIN_USER: SystemUser = {
   mobile: '8149862034',
   email: 'admin@mastersystem.com',
   username: 'scrova',
-  password: '1234',
-  pin: '1234',
+  password: '',
+  pin: '',
   role: 'Admin',
   permissions: {
     dashboard: true,

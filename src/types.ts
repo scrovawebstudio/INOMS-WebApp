@@ -902,8 +902,8 @@ export const DEFAULT_FEATURE_ADDONS: FeatureAddonItem[] = [
   {
     id: 'addon-home-server',
     key: 'homeServerSync',
-    name: 'Home Server & High-Speed LAN Sync',
-    description: 'Local area network sync bridge for zero-latency multi-counter billing and silent PC disk backups.',
+    name: 'Workshop Wi-Fi Hub & Technician Sync',
+    description: 'Local Wi-Fi communication hub linking technician Android apps & PCs directly to the Organisation Account, backed up to local storage & Google Drive.',
     monthlyPrice: 499,
     annualPrice: 3999,
     enabled: true

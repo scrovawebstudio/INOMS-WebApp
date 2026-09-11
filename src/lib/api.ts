@@ -112,11 +112,14 @@ export async function verifyMasterPinViaApi(codeOrPin: string): Promise<boolean>
         code: codeOrPin
       })
     });
-    const data = await res.json();
-    if (data.success && data.token) {
-      setAuthToken(data.token, true);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.token) {
+        setAuthToken(data.token, true);
+      }
+      return !!data.success;
     }
-    return !!data.success;
+    return false;
   } catch (err) {
     return false;
   }

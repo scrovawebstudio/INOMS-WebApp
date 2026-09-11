@@ -36,6 +36,24 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Direct APK Download route for Android Technicians
+app.get(['/Inoms-android.apk', '/inoms-android.apk', '/downloads/inoms-android.apk', '/downloads/Inoms-android.apk'], (_req, res) => {
+  const possiblePaths = [
+    path.join(process.cwd(), 'public', 'Inoms-android.apk'),
+    path.join(process.cwd(), 'public', 'inoms-android.apk'),
+    path.join(process.cwd(), 'dist', 'Inoms-android.apk'),
+    path.join(process.cwd(), 'dist', 'inoms-android.apk')
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="Inoms-android.apk"');
+      return res.sendFile(p);
+    }
+  }
+  res.status(404).send('APK file not found in public folder. Please place Inoms-android.apk into the public/ directory.');
+});
+
 // Mount all authoritative Home Server API endpoints under /api
 app.use('/api', apiRouter);
 

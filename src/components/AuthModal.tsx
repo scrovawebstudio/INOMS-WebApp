@@ -27,14 +27,18 @@ import {
   ArrowRight,
   Clock,
   Globe,
-  Loader2
+  Loader2,
+  Wifi,
+  Radio,
+  Download
 } from 'lucide-react';
 
 import { SystemUser } from '../types';
 import { INITIAL_USERS, MASTER_ADMIN_USER, INITIAL_ORG_USERS } from '../data';
 import { getAppStorageItem } from '../lib/storage';
-import { verifyTOTPViaApi, verifyMasterPinViaApi, verifyOrgPinViaApi, staffLoginViaApi, registerOrgViaApi, lookupOrgByMobileViaApi, fetchAdminOrganizationsViaApi, ensureTenantSessionViaApi, syncTenantsViaApi } from '../lib/api';
+import { verifyTOTPViaApi, verifyMasterPinViaApi, verifyOrgPinViaApi, staffLoginViaApi, registerOrgViaApi, lookupOrgByMobileViaApi, fetchAdminOrganizationsViaApi, ensureTenantSessionViaApi, syncTenantsViaApi, verifyServerPairingCode } from '../lib/api';
 import { isTenantProPlan, isTenantTrialActive } from '../lib/orgUtils';
+import { isNativeCapacitorApp, getServerBaseUrl, setServerBaseUrl, getPairedOrgInfo, savePairedOrgInfo } from '../lib/serverConfig';
 
 export interface SystemAnnouncement {
   id: string;
@@ -150,7 +154,7 @@ export interface TenantOrg {
   createdAt: string;
   secretKey?: string;
   features?: TenantFeatures;
-  subscriptionPlan?: 'trial' | 'monthly' | 'quarterly' | 'annual' | 'lifetime';
+  subscriptionPlan?: 'trial' | 'monthly' | 'quarterly' | 'annual' | 'lifetime' | string;
   subscriptionStartDate?: string;
   subscriptionEndDate?: string;
   trialDays?: number;
@@ -162,12 +166,12 @@ export const INITIAL_TENANTS: TenantOrg[] = [
     id: 'org-admin',
     name: 'Master System Admin',
     code: 'ADMIN-00',
-    pin: '••••••',
+    pin: '',
     ownerMobile: '+91 8149862034',
     ownerName: 'Master System Admin',
     status: 'active',
     createdAt: '2026-01-01',
-    secretKey: 'MASTERADMIN2FA37'
+    secretKey: ''
   }
 ];
 
@@ -291,7 +295,15 @@ export default function AuthModal({
   onRegisterOrg,
   onClose
 }: AuthModalProps) {
-  const [authMethod, setAuthMethod] = useState<'mobile_2fa' | 'staff_login' | 'free_trial' | 'pin_passcode'>('mobile_2fa');
+  const [authMethod, setAuthMethod] = useState<'mobile_2fa' | 'staff_login' | 'free_trial' | 'pin_passcode'>(() => {
+    return isNativeCapacitorApp() ? 'staff_login' : 'mobile_2fa';
+  });
+
+  // Workshop Wi-Fi Hub Quick-Link States (Technician / Android)
+  const [hubPairCodeInput, setHubPairCodeInput] = useState<string>('');
+  const [hubPairingLoading, setHubPairingLoading] = useState<boolean>(false);
+  const [hubPairingMsg, setHubPairingMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [pairedServerInfo, setPairedServerInfo] = useState<{ tenantId?: string; name?: string; serverUrl?: string } | null>(() => getPairedOrgInfo());
   
   // 7-Day Free Trial Self-Service Registration States (for inoms.in leads)
   const [trialOrgName, setTrialOrgName] = useState<string>('');
@@ -395,6 +407,48 @@ export default function AuthModal({
         }
       }
     }, 250);
+  };
+
+  const handleVerifyHubCode = async () => {
+    const code = hubPairCodeInput.trim().toUpperCase();
+    if (!code) return;
+    setHubPairingLoading(true);
+    setHubPairingMsg(null);
+    try {
+      const res = await verifyServerPairingCode(code);
+      if (res.success && res.serverUrl) {
+        setServerBaseUrl(res.serverUrl);
+        savePairedOrgInfo({ tenantId: res.tenantId || '', name: res.tenantName, serverUrl: res.serverUrl });
+        setPairedServerInfo({ tenantId: res.tenantId, name: res.tenantName, serverUrl: res.serverUrl });
+        setHubPairingMsg({
+          text: `✓ Linked to ${res.tenantName || 'Workshop Hub'} (${res.serverUrl})! Enter your technician credentials below.`,
+          isError: false
+        });
+        if (res.tenantId) {
+          const matched = tenants.find(t => t.id === res.tenantId);
+          if (matched) {
+            setStaffDetectedOrg(matched);
+            setStaffTenantId(matched.id);
+            if (matched.ownerMobile) setStaffOwnerMobile(matched.ownerMobile);
+          } else {
+            try {
+              const lookup = await lookupOrgByMobileViaApi(res.tenantId);
+              if (lookup.success && lookup.org) {
+                setStaffDetectedOrg(lookup.org);
+                setStaffTenantId(lookup.org.id);
+                if (lookup.org.ownerMobile) setStaffOwnerMobile(lookup.org.ownerMobile);
+              }
+            } catch (_) {}
+          }
+        }
+      } else {
+        setHubPairingMsg({ text: res.error || res.message || 'Invalid or expired pairing code. Please generate a new code from the Organisation PC.', isError: true });
+      }
+    } catch (e: any) {
+      setHubPairingMsg({ text: e?.message || 'Could not connect to Workshop Hub. Make sure this phone is connected to the same workshop Wi-Fi.', isError: true });
+    } finally {
+      setHubPairingLoading(false);
+    }
   };
 
   // PIN Login states
@@ -1396,14 +1450,17 @@ export default function AuthModal({
 
             <button
               type="button"
-              disabled
-              title="Staff & Technician Portal — Coming Soon in future update"
-              className="hidden flex-1 min-w-[140px] py-2.5 px-2 text-xs font-bold border-b-2 flex items-center justify-center gap-1.5 transition cursor-not-allowed opacity-60 border-transparent text-slate-400 bg-slate-50/40 whitespace-nowrap"
+              onClick={() => setAuthMethod('staff_login')}
+              className={`flex-1 min-w-[130px] py-2.5 px-2 text-xs font-bold border-b-2 flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                authMethod === 'staff_login'
+                  ? 'border-purple-600 text-purple-700 bg-purple-50/60 font-black'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
             >
-              <User className="w-4 h-4 text-slate-400 shrink-0" />
+              <User className="w-4 h-4 text-purple-600 shrink-0" />
               <span>Staff & Tech</span>
-              <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-200">
-                Coming Soon
+              <span className="bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider border border-purple-200">
+                Android / Hub
               </span>
             </button>
 
@@ -1735,14 +1792,71 @@ export default function AuthModal({
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-teal-500/20 border border-teal-400/30 rounded-xl text-teal-400">
+                  <div className="p-2 bg-purple-500/20 border border-purple-400/30 rounded-xl text-purple-300">
                     <User className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-white">Technician & Staff Workspace Portal</h4>
-                    <p className="text-[11px] text-slate-300">Login for Technicians, Engineers, Front Desk, & Staff</p>
+                    <p className="text-[11px] text-slate-300">Direct Workshop Wi-Fi Access for Technicians & Staff</p>
                   </div>
                 </div>
+                {isNativeCapacitorApp() ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    Android APK
+                  </span>
+                ) : (
+                  <a
+                    href="/Inoms-android.apk"
+                    download="Inoms-android.apk"
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 transition shadow-sm"
+                    title="Download Inoms-android.apk directly for Android phones"
+                  >
+                    <Download className="w-3 h-3 text-emerald-400" />
+                    <span>Get APK</span>
+                  </a>
+                )}
+              </div>
+
+              {/* Quick Wi-Fi Hub Link Card */}
+              <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-900">
+                    <Wifi className="w-4 h-4 text-purple-600" />
+                    <span>Quick Link via Workshop Wi-Fi Hub</span>
+                  </div>
+                  {pairedServerInfo?.name && (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                      Linked: {pairedServerInfo.name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-purple-800 leading-tight">
+                  Enter the 6-character Pairing Code shown on your shop's PC screen (e.g. <code className="font-bold">PR-8421</code>) to link this device directly:
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={hubPairCodeInput}
+                    onChange={(e) => setHubPairCodeInput(e.target.value.toUpperCase())}
+                    placeholder="e.g. PR-8421"
+                    maxLength={10}
+                    className="flex-1 bg-white border border-purple-300 rounded-xl px-3 py-1.5 text-xs font-mono font-bold tracking-wider uppercase text-purple-950 outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyHubCode}
+                    disabled={hubPairingLoading || !hubPairCodeInput.trim()}
+                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                  >
+                    {hubPairingLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
+                    <span>Link Hub</span>
+                  </button>
+                </div>
+                {hubPairingMsg && (
+                  <div className={`text-[11px] font-semibold flex items-center gap-1.5 ${hubPairingMsg.isError ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    <span>{hubPairingMsg.text}</span>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handleStaffSubmit} className="space-y-3.5 bg-slate-50 border border-slate-200 p-4 rounded-2xl">

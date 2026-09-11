@@ -39,10 +39,19 @@ import {
   PiggyBank,
   Loader2,
   Database,
-  Download
+  Download,
+  Calendar,
+  CalendarDays
 } from 'lucide-react';
-import { AddonPricingConfig, MasterAdminInvoice, DEFAULT_ADDON_PRICING, SubscriptionRenewalRequest, Expense, CompanyConfig } from '../types';
-import { getTierPlan, getTierFeatures, getTierAllowedModules } from '../lib/masterAdminConfig';
+import { AddonPricingConfig, MasterAdminInvoice, DEFAULT_ADDON_PRICING, SubscriptionRenewalRequest, Expense, CompanyConfig, SubscriptionPlanConfig } from '../types';
+import {
+  getTierPlan,
+  getTierFeatures,
+  getTierAllowedModules,
+  getAllSubscriptionPlanVariations,
+  resolvePlanInfo,
+  ResolvedPlanInfo
+} from '../lib/masterAdminConfig';
 import MasterAdminPricing from './MasterAdminPricing';
 import MasterAdminBilling from './MasterAdminBilling';
 import DirectRenewalQueue from './DirectRenewalQueue';
@@ -401,7 +410,7 @@ export default function MasterAdminDashboard({
   const [regOwner, setRegOwner] = useState<string>('');
   const [regPin, setRegPin] = useState<string>('1234');
   const [regSecretKey, setRegSecretKey] = useState<string>('');
-  const [regSubscriptionType, setRegSubscriptionType] = useState<'trial_7d' | 'monthly' | 'annual' | 'lifetime'>('trial_7d');
+  const [regSubscriptionType, setRegSubscriptionType] = useState<string>('trial');
 
   // Edit Org Modal state
   const [editingOrg, setEditingOrg] = useState<TenantOrg | null>(null);
@@ -412,8 +421,61 @@ export default function MasterAdminDashboard({
   const [editPin, setEditPin] = useState<string>('1234');
   const [editSecretKey, setEditSecretKey] = useState<string>('');
   const [editStatus, setEditStatus] = useState<'active' | 'deactivated'>('active');
-  const [editSubPlan, setEditSubPlan] = useState<'trial' | 'monthly' | 'quarterly' | 'annual' | 'lifetime'>('monthly');
+  const [editSubPlan, setEditSubPlan] = useState<string>('basic_30d');
   const [editSubEndDate, setEditSubEndDate] = useState<string>('');
+  const [editTierTab, setEditTierTab] = useState<'all' | 'basic' | 'business' | 'pro' | 'special'>('all');
+
+  // Subscription Plan Variations available in Master Admin (from Pricing Matrix config or defaults)
+  const allPlanVariations = useMemo(() => {
+    return getAllSubscriptionPlanVariations(pricingConfig);
+  }, [pricingConfig]);
+
+  const basicPlanVariations = useMemo(() => {
+    return allPlanVariations.filter(p => p.tier === 'basic');
+  }, [allPlanVariations]);
+
+  const businessPlanVariations = useMemo(() => {
+    return allPlanVariations.filter(p => p.tier === 'business');
+  }, [allPlanVariations]);
+
+  const proPlanVariations = useMemo(() => {
+    return allPlanVariations.filter(p => p.tier === 'pro');
+  }, [allPlanVariations]);
+
+  const currentEditPlanInfo = useMemo(() => {
+    return resolvePlanInfo(editSubPlan, pricingConfig);
+  }, [editSubPlan, pricingConfig]);
+
+  const handleSelectPlanVariation = (planKey: string) => {
+    setEditSubPlan(planKey);
+    const info = resolvePlanInfo(planKey, pricingConfig);
+    
+    // Automatically calculate expiry date from today
+    const d = new Date();
+    if (info.key === 'lifetime') {
+      d.setFullYear(d.getFullYear() + 10);
+    } else {
+      d.setDate(d.getDate() + (info.durationDays || 30));
+    }
+    setEditSubEndDate(d.toISOString().split('T')[0]);
+
+    // Automatically synchronize allowed modules and feature flags based on Tier
+    setEditAllowedModules(info.allowedModules);
+    setEditAllowLiveQueue(Boolean(info.features.allowLiveQueue));
+    setEditAllowHomeServerSync(Boolean(info.features.allowHomeServerSync));
+    setEditAllowTechnicianAccounts(Boolean(info.features.allowTechnicianAccounts));
+    setEditAllowBarcodeQrTags(info.features.allowBarcodeQrTags !== false);
+    setEditAllowOutwardTaxInvoiceButton(info.features.allowOutwardTaxInvoiceButton !== false);
+    setEditAllowGoogleDriveSync(Boolean(info.features.allowGoogleDriveSync));
+  };
+
+  const handleQuickExtendExpiry = (daysToAdd: number) => {
+    const base = editSubEndDate ? new Date(editSubEndDate) : new Date();
+    const current = isNaN(base.getTime()) ? new Date() : base;
+    const startFrom = current.getTime() < Date.now() ? new Date() : current;
+    startFrom.setDate(startFrom.getDate() + daysToAdd);
+    setEditSubEndDate(startFrom.toISOString().split('T')[0]);
+  };
 
   // Modular Feature Add-ons State for Master Admin Control
   const [editAllowLiveQueue, setEditAllowLiveQueue] = useState<boolean>(true);
@@ -436,14 +498,18 @@ export default function MasterAdminDashboard({
     setEditPin(adminDetails.pin !== undefined && adminDetails.pin !== null ? adminDetails.pin : (org.pin !== undefined && org.pin !== null ? org.pin : '1234'));
     setEditSecretKey(adminDetails.secretKey || org.secretKey || '');
     setEditStatus(org.status);
-    setEditSubPlan(org.subscriptionPlan || (org.isTrial ? 'trial' : 'monthly'));
+    
+    const initialPlan = org.subscriptionPlan || (org.isTrial ? 'trial' : 'basic_30d');
+    setEditSubPlan(initialPlan);
+    const resolved = resolvePlanInfo(initialPlan, pricingConfig);
+    setEditTierTab(resolved.tier === 'trial' || resolved.tier === 'lifetime' ? 'special' : resolved.tier);
     
     // Default or existing subscription end date
     if (org.subscriptionEndDate) {
       setEditSubEndDate(org.subscriptionEndDate.split('T')[0]);
     } else {
       const d = new Date();
-      d.setDate(d.getDate() + (org.isTrial ? 7 : 30));
+      d.setDate(d.getDate() + (resolved.durationDays || (org.isTrial ? 7 : 30)));
       setEditSubEndDate(d.toISOString().split('T')[0]);
     }
 
@@ -496,15 +562,18 @@ export default function MasterAdminDashboard({
     if (editStatus === 'active') {
       const isPastOrEmpty = !finalEndDate || new Date(finalEndDate).getTime() < Date.now();
       if (isPastOrEmpty) {
+        const planInfo = resolvePlanInfo(editSubPlan, pricingConfig);
         const d = new Date();
-        const days = editSubPlan === 'annual' ? 365
-          : editSubPlan === 'quarterly' ? 90
-          : editSubPlan === 'trial' ? 7
-          : 30;
-        d.setDate(d.getDate() + days);
+        if (planInfo.key === 'lifetime') {
+          d.setFullYear(d.getFullYear() + 10);
+        } else {
+          d.setDate(d.getDate() + (planInfo.durationDays || 30));
+        }
         finalEndDate = d.toISOString().split('T')[0];
       }
     }
+
+    const isPlanTrial = editSubPlan === 'trial' || editSubPlan === 'free_trial';
 
     const updated: TenantOrg = {
       ...editingOrg,
@@ -517,7 +586,7 @@ export default function MasterAdminDashboard({
       status: editStatus,
       subscriptionPlan: editSubPlan,
       subscriptionEndDate: finalEndDate,
-      isTrial: editSubPlan === 'trial',
+      isTrial: isPlanTrial,
       features: {
         allowLiveQueue: editAllowLiveQueue,
         allowHomeServerSync: editAllowHomeServerSync,
@@ -602,24 +671,14 @@ export default function MasterAdminDashboard({
     const startDate = now.toISOString().split('T')[0];
     const endDate = new Date(now);
     
-    let trialDays = 0;
-    let isTrial = false;
-    let subscriptionPlan: 'trial' | 'monthly' | 'quarterly' | 'annual' | 'lifetime' = 'monthly';
-
-    if (regSubscriptionType === 'trial_7d') {
-      trialDays = 7;
-      isTrial = true;
-      subscriptionPlan = 'trial';
-      endDate.setDate(endDate.getDate() + 7);
-    } else if (regSubscriptionType === 'annual') {
-      subscriptionPlan = 'annual';
-      endDate.setFullYear(endDate.getFullYear() + 1);
-    } else if (regSubscriptionType === 'lifetime') {
-      subscriptionPlan = 'lifetime';
+    const planInfo = resolvePlanInfo(regSubscriptionType, pricingConfig);
+    const isTrial = planInfo.key === 'trial' || regSubscriptionType === 'trial_7d';
+    const trialDays = isTrial ? 7 : 0;
+    
+    if (planInfo.key === 'lifetime') {
       endDate.setFullYear(endDate.getFullYear() + 10);
     } else {
-      subscriptionPlan = 'monthly';
-      endDate.setDate(endDate.getDate() + 30);
+      endDate.setDate(endDate.getDate() + (planInfo.durationDays || (isTrial ? 7 : 30)));
     }
 
     const newOrg: TenantOrg = {
@@ -632,20 +691,20 @@ export default function MasterAdminDashboard({
       status: 'active',
       createdAt: startDate,
       secretKey: regSecretKey,
-      subscriptionPlan,
+      subscriptionPlan: planInfo.key,
       subscriptionStartDate: startDate,
       subscriptionEndDate: endDate.toISOString().split('T')[0],
       trialDays,
       isTrial,
       features: {
-        allowLiveQueue: true,
-        allowHomeServerSync: false,
-        allowBarcodeQrTags: true,
+        allowLiveQueue: Boolean(planInfo.features.allowLiveQueue),
+        allowHomeServerSync: Boolean(planInfo.features.allowHomeServerSync),
+        allowBarcodeQrTags: planInfo.features.allowBarcodeQrTags !== false,
         allowWhatsAppMessaging: true,
-        allowTechnicianAccounts: false,
-        allowOutwardTaxInvoiceButton: true,
-        allowGoogleDriveSync: isTrial || subscriptionPlan === 'lifetime' || (subscriptionPlan as string).toLowerCase().includes('pro'),
-        allowedModules: [
+        allowTechnicianAccounts: Boolean(planInfo.features.allowTechnicianAccounts),
+        allowOutwardTaxInvoiceButton: planInfo.features.allowOutwardTaxInvoiceButton !== false,
+        allowGoogleDriveSync: isTrial || planInfo.key === 'lifetime' || Boolean(planInfo.features.allowGoogleDriveSync),
+        allowedModules: planInfo.allowedModules || [
           'dashboard', 'live_queue', 'inwards', 'outwards', 'billing', 'payments', 'inventory', 'expenses', 'reports', 'settings'
         ]
       }
@@ -1127,11 +1186,12 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                 const diffDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                 const isExpired = diffDays < 0;
                 const isTrial = org.isTrial || org.subscriptionPlan === 'trial';
+                const planDetails = resolvePlanInfo(org.subscriptionPlan, pricingConfig);
 
                 if (isExpired) {
                   subBadge = (
                     <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 px-2 py-0.5 rounded-md text-[10px] font-extrabold border border-rose-300">
-                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" /> Expired ({Math.abs(diffDays)}d ago)
+                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" /> Expired ({Math.abs(diffDays)}d ago) · {planDetails.tierLabel}
                     </span>
                   );
                   statusTheme = {
@@ -1141,7 +1201,7 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                 } else if (diffDays <= 7) {
                   subBadge = (
                     <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md text-[10px] font-extrabold border border-amber-300 animate-pulse">
-                      <Clock className="w-3 h-3 text-amber-700 shrink-0" /> {diffDays === 0 ? 'Expires Today' : `${diffDays}d left`} {isTrial ? '(Trial)' : ''}
+                      <Clock className="w-3 h-3 text-amber-700 shrink-0" /> {diffDays === 0 ? 'Expires Today' : `${diffDays}d left`} · {planDetails.tierLabel}
                     </span>
                   );
                   statusTheme = {
@@ -1150,13 +1210,17 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                   };
                 } else {
                   subBadge = (
-                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md text-[10px] font-bold border border-emerald-200">
-                      {isTrial ? '🎁 7-Day Trial' : org.subscriptionPlan ? `⭐ ${org.subscriptionPlan.toUpperCase()}` : 'Active Plan'} ({diffDays}d left)
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${planDetails.tierBadgeClass}`}>
+                      {planDetails.tierLabel} · {planDetails.durationLabel} ({diffDays}d left)
                     </span>
                   );
                   statusTheme = {
                     cardClass: isTrial
                       ? 'border-l-4 border-l-indigo-500 border-t border-r border-b border-indigo-200 hover:bg-indigo-50/60 bg-indigo-50/15'
+                      : planDetails.tier === 'pro'
+                      ? 'border-l-4 border-l-purple-500 border-t border-r border-b border-purple-200 hover:bg-purple-50/50 bg-white'
+                      : planDetails.tier === 'business'
+                      ? 'border-l-4 border-l-blue-500 border-t border-r border-b border-blue-200 hover:bg-blue-50/50 bg-white'
                       : 'border-l-4 border-l-emerald-500 border-t border-r border-b border-emerald-200 hover:bg-emerald-50/50 bg-white',
                     subtleBorder: isTrial ? 'border-indigo-200' : 'border-emerald-200'
                   };
@@ -1394,12 +1458,13 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                     const diffDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                     const isExpired = diffDays < 0;
                     const isTrial = org.isTrial || org.subscriptionPlan === 'trial';
+                    const planDetails = resolvePlanInfo(org.subscriptionPlan, pricingConfig);
 
                     if (isExpired) {
                       subBadge = (
                         <div className="flex flex-col gap-0.5">
                           <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 px-2 py-0.5 rounded-md text-[10px] font-extrabold border border-rose-300">
-                            <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" /> Expired ({Math.abs(diffDays)}d ago)
+                            <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" /> Expired ({Math.abs(diffDays)}d ago) · {planDetails.tierLabel}
                           </span>
                           <span className="text-[9px] text-slate-400 font-mono">{org.subscriptionEndDate.split('T')[0]}</span>
                         </div>
@@ -1412,7 +1477,7 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                       subBadge = (
                         <div className="flex flex-col gap-0.5">
                           <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md text-[10px] font-extrabold border border-amber-300 animate-pulse">
-                            <Clock className="w-3 h-3 text-amber-700 shrink-0" /> {diffDays === 0 ? 'Expires Today' : `${diffDays}d left`} {isTrial ? '(Trial)' : ''}
+                            <Clock className="w-3 h-3 text-amber-700 shrink-0" /> {diffDays === 0 ? 'Expires Today' : `${diffDays}d left`} · {planDetails.tierLabel}
                           </span>
                           <span className="text-[9px] text-slate-400 font-mono">{org.subscriptionEndDate.split('T')[0]}</span>
                         </div>
@@ -1437,15 +1502,19 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                     } else {
                       subBadge = (
                         <div className="flex flex-col gap-0.5">
-                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md text-[10px] font-bold border border-emerald-200">
-                            {org.subscriptionPlan ? `⭐ ${org.subscriptionPlan.toUpperCase()}` : 'Active Plan'} ({diffDays}d)
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${planDetails.tierBadgeClass}`}>
+                            {planDetails.tierLabel} · {planDetails.durationLabel} ({diffDays}d)
                           </span>
                           <span className="text-[9px] text-slate-400 font-mono">Until {org.subscriptionEndDate.split('T')[0]}</span>
                         </div>
                       );
-                      rowBorderLeft = 'border-l-4 border-l-emerald-500';
-                      rowBorderBottom = 'border-b border-emerald-100/70';
-                      rowHoverBg = 'hover:bg-emerald-50/50';
+                      rowBorderLeft = planDetails.tier === 'pro'
+                        ? 'border-l-4 border-l-purple-500'
+                        : planDetails.tier === 'business'
+                        ? 'border-l-4 border-l-blue-500'
+                        : 'border-l-4 border-l-emerald-500';
+                      rowBorderBottom = 'border-b border-slate-100';
+                      rowHoverBg = 'hover:bg-slate-50';
                       rowBaseBg = 'bg-white';
                     }
                   } else {
@@ -1942,69 +2011,95 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                     </span>
                   </div>
                   
+                  {/* Quick Select Buttons */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs font-semibold">
-                    <label className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
-                      regSubscriptionType === 'trial_7d' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="regSubType"
-                        value="trial_7d"
-                        checked={regSubscriptionType === 'trial_7d'}
-                        onChange={() => setRegSubscriptionType('trial_7d')}
-                        className="hidden"
-                      />
+                    <button
+                      type="button"
+                      onClick={() => setRegSubscriptionType('trial')}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
+                        regSubscriptionType === 'trial' || regSubscriptionType === 'trial_7d' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
                       <span className="font-extrabold text-[11px]">🎁 7-Day Trial</span>
-                      <span className="text-[9px] opacity-80">Free Evaluation</span>
-                    </label>
+                      <span className="text-[9px] opacity-80">Free Evaluation (₹0)</span>
+                    </button>
 
-                    <label className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
-                      regSubscriptionType === 'monthly' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="regSubType"
-                        value="monthly"
-                        checked={regSubscriptionType === 'monthly'}
-                        onChange={() => setRegSubscriptionType('monthly')}
-                        className="hidden"
-                      />
-                      <span className="font-extrabold text-[11px]">📅 1 Month</span>
-                      <span className="text-[9px] opacity-80">30 Days Access</span>
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setRegSubscriptionType('basic_30d')}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
+                        regSubscriptionType === 'basic_30d' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-extrabold text-[11px]">🟢 Basic 30d</span>
+                      <span className="text-[9px] opacity-80">₹{resolvePlanInfo('basic_30d', pricingConfig).amount}/mo</span>
+                    </button>
 
-                    <label className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
-                      regSubscriptionType === 'annual' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="regSubType"
-                        value="annual"
-                        checked={regSubscriptionType === 'annual'}
-                        onChange={() => setRegSubscriptionType('annual')}
-                        className="hidden"
-                      />
-                      <span className="font-extrabold text-[11px]">⭐ 1 Year</span>
-                      <span className="text-[9px] opacity-80">365 Days Access</span>
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setRegSubscriptionType('business_30d')}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
+                        regSubscriptionType === 'business_30d' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-extrabold text-[11px]">🔵 Business 30d</span>
+                      <span className="text-[9px] opacity-80">₹{resolvePlanInfo('business_30d', pricingConfig).amount}/mo</span>
+                    </button>
 
-                    <label className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
-                      regSubscriptionType === 'lifetime' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="regSubType"
-                        value="lifetime"
-                        checked={regSubscriptionType === 'lifetime'}
-                        onChange={() => setRegSubscriptionType('lifetime')}
-                        className="hidden"
-                      />
-                      <span className="font-extrabold text-[11px]">♾️ Lifetime</span>
-                      <span className="text-[9px] opacity-80">Permanent Plan</span>
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setRegSubscriptionType('pro_30d')}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col items-center text-center gap-1 ${
+                        regSubscriptionType === 'pro_30d' ? 'bg-teal-600 text-white border-teal-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-extrabold text-[11px]">🟣 Pro 30d</span>
+                      <span className="text-[9px] opacity-80">₹{resolvePlanInfo('pro_30d', pricingConfig).amount}/mo</span>
+                    </button>
                   </div>
+
+                  {/* Or Select Any Specific Duration Variation Dropdown */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-teal-900 uppercase mb-1">
+                      Or Select Specific Duration Variation:
+                    </label>
+                    <select
+                      value={regSubscriptionType}
+                      onChange={(e) => setRegSubscriptionType(e.target.value)}
+                      className="w-full bg-white border border-teal-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                    >
+                      <optgroup label="🎁 Free Trial & Enterprise">
+                        <option value="trial">🎁 7-Day Free Trial (7 Days · ₹0)</option>
+                        <option value="lifetime">♾️ Lifetime License (Permanent · 10+ Years)</option>
+                      </optgroup>
+                      <optgroup label="🟢 INOMS Basic Variations">
+                        {basicPlanVariations.map(p => (
+                          <option key={p.key} value={p.key}>
+                            🟢 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="🔵 INOMS Business Variations">
+                        {businessPlanVariations.map(p => (
+                          <option key={p.key} value={p.key}>
+                            🔵 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="🟣 INOMS Pro Variations">
+                        {proPlanVariations.map(p => (
+                          <option key={p.key} value={p.key}>
+                            🟣 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
                   <p className="text-[10px] text-teal-800/80 font-medium">
-                    {regSubscriptionType === 'trial_7d' ? 'Organization will get full access for 7 days. Master Admin dashboard will alert when trial is expiring or expired.' : 'Subscription will be monitored on the Master Admin dashboard.'}
+                    {regSubscriptionType === 'trial' || regSubscriptionType === 'trial_7d'
+                      ? 'Organization will get full trial access for 7 days. Master Admin will be alerted before expiry.'
+                      : `Selected: ${resolvePlanInfo(regSubscriptionType, pricingConfig).title} — ${resolvePlanInfo(regSubscriptionType, pricingConfig).durationLabel} access.`}
                   </p>
                 </div>
 
@@ -2276,64 +2371,287 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                 </div>
               </div>
 
-              {/* Subscription Plan & Duration Management */}
-              <div className="pt-2 border-t border-slate-200 space-y-3">
-                <div className="bg-teal-50/70 p-3 rounded-xl border border-teal-200">
-                  <h4 className="font-extrabold text-xs text-teal-900 uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                    <Clock className="w-4 h-4 text-teal-700" /> Subscription Plan & Expiry Monitoring
-                  </h4>
-                  <p className="text-[11px] text-teal-700">
-                    Configure client subscription cycle, free trial status, and expiry date.
-                  </p>
+              {/* Subscription Plan & Duration Variations Management */}
+              <div className="pt-2 border-t border-slate-200 space-y-3.5">
+                <div className="bg-teal-50/80 p-3 rounded-xl border border-teal-200/80 flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="font-extrabold text-xs text-teal-900 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                      <Clock className="w-4 h-4 text-teal-700" /> Subscription Plan & Pricing Matrix Variations
+                    </h4>
+                    <p className="text-[11px] text-teal-700 leading-relaxed">
+                      Select from all 14 configured duration variations across Basic, Business, and Pro tiers, or assign Free Trial / Lifetime license.
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+                    {allPlanVariations.length} Variations Active
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* Tier Quick Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Filter Tier:</span>
+                  {[
+                    { id: 'all', label: 'All Plans' },
+                    { id: 'basic', label: '🟢 Basic (6)' },
+                    { id: 'business', label: '🔵 Business (4)' },
+                    { id: 'pro', label: '🟣 Pro (4)' },
+                    { id: 'special', label: '🎁 Trial & Lifetime' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setEditTierTab(tab.id as any)}
+                      className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer whitespace-nowrap ${
+                        editTierTab === tab.id
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Main Plan Selection Dropdown & Expiry Date Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-500 uppercase mb-1">Plan Type</label>
+                    <label className="block font-bold text-slate-500 uppercase text-[10px] mb-1">
+                      Selected Plan Variation
+                    </label>
                     <select
                       value={editSubPlan}
-                      onChange={(e) => {
-                        const nextPlan = e.target.value as any;
-                        setEditSubPlan(nextPlan);
-                        const d = new Date();
-                        if (nextPlan === 'trial') d.setDate(d.getDate() + 7);
-                        else if (nextPlan === 'monthly' || nextPlan === 'basic' || nextPlan === 'business' || nextPlan === 'pro') d.setDate(d.getDate() + 30);
-                        else if (nextPlan === 'quarterly') d.setDate(d.getDate() + 90);
-                        else if (nextPlan === 'annual') d.setFullYear(d.getFullYear() + 1);
-                        else if (nextPlan === 'lifetime') d.setFullYear(d.getFullYear() + 10);
-                        setEditSubEndDate(d.toISOString().split('T')[0]);
-
-                        // Auto-sync feature toggles if a tier was picked
-                        if (nextPlan === 'basic' || nextPlan === 'business' || nextPlan === 'pro') {
-                          const tPlan = getTierPlan(nextPlan);
-                          setEditAllowedModules(tPlan.allowedModules);
-                          setEditAllowLiveQueue(tPlan.features.allowLiveQueue || false);
-                          setEditAllowHomeServerSync(tPlan.features.allowHomeServerSync || false);
-                          setEditAllowTechnicianAccounts(tPlan.features.allowTechnicianAccounts || false);
-                          setEditAllowBarcodeQrTags(tPlan.features.allowBarcodeQrTags !== false);
-                          setEditAllowOutwardTaxInvoiceButton(tPlan.features.allowOutwardTaxInvoiceButton !== false);
-                        }
-                      }}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold"
+                      onChange={(e) => handleSelectPlanVariation(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-800 focus:ring-2 focus:ring-teal-500 shadow-2xs"
                     >
-                      <option value="trial">🎁 7-Day Free Trial</option>
-                      <option value="basic">🟢 INOMS Basic (₹399/mo)</option>
-                      <option value="business">🔵 INOMS Business (₹599/mo)</option>
-                      <option value="pro">🟣 INOMS Pro (₹699/mo)</option>
-                      <option value="monthly">📅 Standard Monthly (30 Days)</option>
-                      <option value="quarterly">📊 Quarterly (90 Days)</option>
-                      <option value="annual">⭐ Annual (365 Days)</option>
-                      <option value="lifetime">♾️ Lifetime License</option>
+                      {(editTierTab === 'all' || editTierTab === 'special') && (
+                        <optgroup label="🎁 Free Trial & Special Licenses">
+                          <option value="trial">🎁 7-Day Free Trial (7 Days · ₹0)</option>
+                          <option value="lifetime">♾️ Lifetime License (Permanent · 10+ Years · All Features)</option>
+                        </optgroup>
+                      )}
+
+                      {(editTierTab === 'all' || editTierTab === 'basic') && (
+                        <optgroup label="🟢 INOMS Basic Tier (6 Duration Variations)">
+                          {basicPlanVariations.map((p) => (
+                            <option key={p.key} value={p.key}>
+                              🟢 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {(editTierTab === 'all' || editTierTab === 'business') && (
+                        <optgroup label="🔵 INOMS Business Tier (4 Duration Variations)">
+                          {businessPlanVariations.map((p) => (
+                            <option key={p.key} value={p.key}>
+                              🔵 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {(editTierTab === 'all' || editTierTab === 'pro') && (
+                        <optgroup label="🟣 INOMS Pro Tier (4 Duration Variations)">
+                          {proPlanVariations.map((p) => (
+                            <option key={p.key} value={p.key}>
+                              🟣 {p.title} — ₹{p.amount.toLocaleString('en-IN')}{p.badge ? ` (${p.badge})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {editTierTab === 'all' && (
+                        <optgroup label="⚙️ Legacy Plan Compatibility">
+                          <option value="monthly">📅 Standard Monthly (30 Days)</option>
+                          <option value="quarterly">📊 Quarterly (90 Days)</option>
+                          <option value="annual">⭐ Annual (365 Days)</option>
+                        </optgroup>
+                      )}
                     </select>
                   </div>
+
                   <div>
-                    <label className="block font-bold text-slate-500 uppercase mb-1">Subscription Expiry Date</label>
+                    <label className="block font-bold text-slate-500 uppercase text-[10px] mb-1">
+                      Subscription Expiry Date
+                    </label>
                     <input
                       type="date"
                       value={editSubEndDate}
                       onChange={(e) => setEditSubEndDate(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold"
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold bg-white text-slate-800 focus:ring-2 focus:ring-teal-500 shadow-2xs"
                     />
+                  </div>
+                </div>
+
+                {/* Duration Matrix Quick-Select Chips (Shows variations for current tier) */}
+                {(currentEditPlanInfo.tier === 'basic' || currentEditPlanInfo.tier === 'business' || currentEditPlanInfo.tier === 'pro') && (
+                  <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase text-slate-500">
+                        {currentEditPlanInfo.tierLabel} Duration Variations ({
+                          currentEditPlanInfo.tier === 'basic' ? basicPlanVariations.length :
+                          currentEditPlanInfo.tier === 'business' ? businessPlanVariations.length :
+                          proPlanVariations.length
+                        } options):
+                      </span>
+                      <span className="text-[10px] text-teal-700 font-semibold">
+                        Click any variation to apply duration & tier features
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
+                      {(currentEditPlanInfo.tier === 'basic' ? basicPlanVariations :
+                        currentEditPlanInfo.tier === 'business' ? businessPlanVariations :
+                        proPlanVariations
+                      ).map((variation) => {
+                        const isSelected = editSubPlan === variation.key;
+                        return (
+                          <button
+                            key={variation.key}
+                            type="button"
+                            onClick={() => handleSelectPlanVariation(variation.key)}
+                            className={`p-2 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                              isSelected
+                                ? 'bg-teal-600 text-white border-teal-700 shadow-sm ring-2 ring-teal-400/50'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-teal-400 hover:bg-teal-50/30'
+                            }`}
+                          >
+                            <span className="font-extrabold text-[11px] leading-tight">
+                              {variation.durationDays === 365 ? '1 Year' : `${variation.durationDays} Days`}
+                            </span>
+                            <span className={`text-[10px] font-bold ${isSelected ? 'text-teal-100' : 'text-teal-700 font-mono'}`}>
+                              ₹{variation.amount.toLocaleString('en-IN')}
+                            </span>
+                            {variation.badge && (
+                              <span className={`text-[8.5px] px-1 py-0.2 rounded font-extrabold truncate max-w-full ${
+                                isSelected ? 'bg-teal-800 text-teal-100' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {variation.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Plan Snapshot Banner */}
+                <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                  currentEditPlanInfo.tier === 'trial'
+                    ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                    : currentEditPlanInfo.tier === 'lifetime'
+                    ? 'bg-purple-50/70 border-purple-200 text-purple-900'
+                    : currentEditPlanInfo.tier === 'pro'
+                    ? 'bg-purple-50/70 border-purple-200 text-purple-900'
+                    : currentEditPlanInfo.tier === 'business'
+                    ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                }`}>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${currentEditPlanInfo.tierBadgeClass}`}>
+                        {currentEditPlanInfo.tierLabel}
+                      </span>
+                      <span className="font-extrabold text-xs text-slate-800">
+                        {currentEditPlanInfo.title}
+                      </span>
+                      {currentEditPlanInfo.badge && (
+                        <span className="text-[9.5px] bg-amber-200/90 text-amber-900 font-extrabold px-1.5 py-0.5 rounded">
+                          {currentEditPlanInfo.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      {currentEditPlanInfo.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Plan Price</span>
+                      <span className="text-base font-black text-slate-900 font-mono">
+                        {currentEditPlanInfo.amount === 0 ? 'Free' : `₹${currentEditPlanInfo.amount.toLocaleString('en-IN')}`}
+                      </span>
+                    </div>
+
+                    <div className="border-l border-slate-200 pl-3 text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Duration</span>
+                      <span className="text-xs font-extrabold text-slate-700">
+                        {currentEditPlanInfo.durationLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Expiry Date Adjuster Buttons */}
+                <div className="bg-slate-50 border border-slate-200/90 p-2.5 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-slate-400" /> Quick Extend / Offset Expiry Date:
+                    </span>
+                    {editSubEndDate && (
+                      <span className="text-[10px] font-mono font-bold text-teal-700">
+                        Expires: {editSubEndDate}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(7)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +7 Days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(15)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +15 Days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(30)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +30 Days (1 Mo)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(90)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +90 Days (Quarter)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(180)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +180 Days (Half-Year)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendExpiry(365)}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 hover:bg-teal-50 text-[10px] font-bold text-slate-700 transition cursor-pointer"
+                    >
+                      +1 Year (365d)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setFullYear(d.getFullYear() + 10);
+                        setEditSubEndDate(d.toISOString().split('T')[0]);
+                        setEditSubPlan('lifetime');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-purple-50 border border-purple-200 hover:bg-purple-100 text-[10px] font-bold text-purple-800 transition cursor-pointer ml-auto"
+                    >
+                      ♾️ Permanent (10 Years)
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2370,11 +2688,11 @@ Login Page: Access with registered mobile and PIN on the portal.`;
                     />
                   </label>
 
-                  {/* Home Server Sync Toggle */}
+                  {/* Workshop Wi-Fi Hub & Technician Sync Toggle */}
                   <label className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer">
                     <div className="pr-2">
-                      <span className="font-bold text-slate-800 block">🌐 Home Server DB Data Sync</span>
-                      <span className="text-[10px] text-slate-500 block">Sync job cards, invoices, and ledgers with central Home Server DB</span>
+                      <span className="font-bold text-slate-800 block">📶 Workshop Wi-Fi Hub & Technician Sync</span>
+                      <span className="text-[10px] text-slate-500 block">Enable direct local Wi-Fi linking with technician devices & automated local/drive backups</span>
                     </div>
                     <input
                       type="checkbox"

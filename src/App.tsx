@@ -796,13 +796,23 @@ export default function App() {
     };
   }, [activeTenant?.id, driveSyncState.isConnected, driveSyncState.userEmail, currentUser?.name, currentUser?.email, companyConfig.name]);
 
+  // Global Save Notification Status Banner
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const triggerSaveNotification = React.useCallback((message: string, isError = false) => {
+    setSaveStatus({ type: isError ? 'error' : 'success', message });
+  }, []);
+
   // Multi-device sync state refs
   const tenantCollectionPersistRef = React.useRef<string | null>(null);
   const lastKnownDriveSnapshotTimeRef = React.useRef<string | null>(null);
   const isDriveOperationInProgressRef = React.useRef<boolean>(false);
+  const isApplyingSnapshotRef = React.useRef<boolean>(false);
   const pendingAutoDriveSyncRef = React.useRef<boolean>(false);
   const lastAutoDriveUploadTimeRef = React.useRef<number>(0);
   const autoDriveSyncTimerRef = React.useRef<any>(null);
+  const driveSyncStateRef = React.useRef(driveSyncState);
+  driveSyncStateRef.current = driveSyncState;
 
   /**
    * Universal snapshot application: normalizes payload format (camelCase & snake_case),
@@ -810,8 +820,10 @@ export default function App() {
    */
   const applySnapshotData = React.useCallback(
     async (snapshot: any, tId: string, showNotification = true, customMessage?: string): Promise<boolean> => {
-      const data = normalizeSnapshotData(snapshot);
-      if (!data) return false;
+      isApplyingSnapshotRef.current = true;
+      try {
+        const data = normalizeSnapshotData(snapshot);
+        if (!data) return false;
 
       // Update React state hooks, local persistence cache, and Firestore
       if (Array.isArray(data.clients)) {
@@ -988,9 +1000,14 @@ export default function App() {
         triggerSaveNotification(msg);
       }
       return true;
-    },
-    []
-  );
+    } finally {
+      setTimeout(() => {
+        isApplyingSnapshotRef.current = false;
+      }, 1500);
+    }
+  },
+  []
+);
 
   /**
    * Pull-First Push to Google Drive:
@@ -998,10 +1015,10 @@ export default function App() {
    * 2. Zero-Data Safety Guard: If local device is empty (e.g. newly connected tablet),
    *    restores the cloud data instead of wiping it out.
    * 3. Merges cloud and local records using timestamp-aware union-by-id strategy.
-   * 4. Uploads consolidated snapshot and updates active master.
+   * 4. Uploads consolidated snapshot and updates active master (skipping if 0 data changes).
    */
-  const handlePushSnapshotToDrive = async (silent = false): Promise<any> => {
-    if (!driveSyncState.isConnected) {
+  const handlePushSnapshotToDrive = React.useCallback(async (silent = false, force = false): Promise<any> => {
+    if (!driveSyncStateRef.current.isConnected) {
       if (!silent) {
         triggerSaveNotification('⚠️ Google Drive is not connected.', true);
       }
@@ -1085,8 +1102,8 @@ export default function App() {
         console.warn('[Google Drive] Pre-push cloud compare error, proceeding with local snapshot:', checkErr);
       }
 
-      // 2. Upload consolidated snapshot
-      const res = await uploadSnapshotToDrive(tId, activeTenant?.name || activeCompany, payloadToUpload);
+      // 2. Upload consolidated snapshot (skips redundant network call if data payload hash matches)
+      const res = await uploadSnapshotToDrive(tId, activeTenant?.name || activeCompany, payloadToUpload, { force });
 
       lastAutoDriveUploadTimeRef.current = Date.now();
       if (res?.timestamp) {
@@ -1094,7 +1111,11 @@ export default function App() {
       }
 
       if (!silent) {
-        triggerSaveNotification('✓ Cloud snapshot uploaded to Google Drive successfully!');
+        if (res?.skipped) {
+          triggerSaveNotification('✓ Cloud data is already up to date with Google Drive.');
+        } else {
+          triggerSaveNotification('✓ Cloud snapshot uploaded to Google Drive successfully!');
+        }
       }
 
       return res;
@@ -1110,7 +1131,7 @@ export default function App() {
         }, 5000);
       }
     }
-  };
+  }, [activeTenant?.id, activeTenant?.name, activeCompany, triggerSaveNotification, companyConfig, applySnapshotData]);
 
   /**
    * Pulls latest active snapshot from Google Drive and restores to local device
@@ -1138,14 +1159,24 @@ export default function App() {
    * Fast background check: compares latest Drive snapshot metadata and merges if newer records exist
    */
   const checkAndPullLatestFromDrive = React.useCallback(async (silent = true): Promise<boolean> => {
-    if (!driveSyncState.isConnected || !activeTenant?.id) return false;
+    if (!driveSyncStateRef.current.isConnected || !activeTenant?.id) return false;
     const tId = activeTenant.id;
     if (isDriveOperationInProgressRef.current) return false;
 
     try {
       const meta = await getLatestDriveSnapshotMeta(tId);
+      if (!meta) return false;
+
       const isLocalEmpty = (jobsRef.current.length === 0 && clientsRef.current.length === 0);
-      const isNewer = meta ? (!lastKnownDriveSnapshotTimeRef.current || meta.modifiedTime !== lastKnownDriveSnapshotTimeRef.current) : false;
+      const isNewer = (!lastKnownDriveSnapshotTimeRef.current || meta.modifiedTime !== lastKnownDriveSnapshotTimeRef.current);
+
+      // If data timestamp on Drive is already identical to what we know and local is not empty, skip downloading!
+      if (!isNewer && !isLocalEmpty && silent) {
+        return false;
+      }
+
+      // Mark this snapshot timestamp as checked immediately to prevent repeated downloads
+      lastKnownDriveSnapshotTimeRef.current = meta.modifiedTime;
 
       // If a newer snapshot is found on Drive OR this device is currently blank (0 jobs, 0 clients like a newly opened tablet):
       if (isNewer || isLocalEmpty || !silent) {
@@ -1182,18 +1213,16 @@ export default function App() {
             const { merged, changesFound, isCloudAuthoritative } = mergeOrganizationData(snapshot, localPayload);
             const shouldApply = changesFound || isCloudAuthoritative || (jobsRef.current.length === 0 && Array.isArray(snapshot?.data?.jobs || snapshot?.jobs));
 
-            if (shouldApply || !silent) {
+            if (shouldApply) {
               await applySnapshotData(
                 { data: merged, _fileMeta: meta || snapshot._fileMeta },
                 tId,
                 !silent,
                 '✓ Synchronized latest records from Google Drive'
               );
-              const mod = meta?.modifiedTime || snapshot._fileMeta?.modifiedTime;
-              if (mod) {
-                lastKnownDriveSnapshotTimeRef.current = mod;
-              }
               return true;
+            } else if (!silent) {
+              triggerSaveNotification('✓ Data is already up to date with Google Drive.');
             }
           }
         } finally {
@@ -1204,13 +1233,13 @@ export default function App() {
       console.warn('[Google Drive] Check and pull skipped:', err);
     }
     return false;
-  }, [activeTenant?.id, driveSyncState.isConnected, applySnapshotData, companyConfig]);
+  }, [activeTenant?.id, applySnapshotData, companyConfig, triggerSaveNotification]);
 
   /**
    * Helper to schedule an immediate 5-second debounced sync upon any user mutation
    */
   const scheduleAutoDriveSyncDebounced = React.useCallback(() => {
-    if (!driveSyncState.isConnected || !activeTenant?.id) return;
+    if (!driveSyncStateRef.current.isConnected || !activeTenant?.id) return;
     const tId = activeTenant.id;
     const isAutoSyncEnabled = localStorage.getItem(`inoms_auto_drive_sync_${tId}`) !== 'false';
     if (!isAutoSyncEnabled) return;
@@ -1229,32 +1258,7 @@ export default function App() {
       }
       handlePushSnapshotToDrive(true).catch(() => {});
     }, 5000);
-  }, [driveSyncState.isConnected, activeTenant, handlePushSnapshotToDrive]);
-
-  // Multi-Device Google Drive Synchronization Effect
-  React.useEffect(() => {
-    if (!driveSyncState.isConnected || !activeTenant?.id) return;
-
-    const isReadOnly = concurrencyStateRef.current?.isReadOnly;
-    const hasLocalRecords = jobsRef.current.length > 0 || clientsRef.current.length > 0;
-
-    // Active terminal with records pushes on startup/connect
-    if (!isReadOnly && hasLocalRecords) {
-      handlePushSnapshotToDrive(true).catch(() => {});
-    } else {
-      // Safe Read-Only terminal or device with 0 records immediately pulls latest records
-      checkAndPullLatestFromDrive(false).catch(() => {});
-    }
-
-    // Polling interval (every 15 seconds): if read-only or empty, pull from Drive
-    const pollInterval = setInterval(() => {
-      if (concurrencyStateRef.current?.isReadOnly || jobsRef.current.length === 0) {
-        checkAndPullLatestFromDrive(true).catch(() => {});
-      }
-    }, 15000);
-
-    return () => clearInterval(pollInterval);
-  }, [driveSyncState.isConnected, activeTenant?.id, checkAndPullLatestFromDrive, handlePushSnapshotToDrive]);
+  }, [activeTenant?.id, handlePushSnapshotToDrive]);
 
   // Real-time Server Health & Connection Indicator State (Green/Red dot)
   const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('online');
@@ -2436,9 +2440,6 @@ export default function App() {
     };
   }, [isAuthenticated, showAuthModal, activeTenant?.id, homeServerSyncEnabled]);
 
-  // Global Save Notification Status Banner (Green for 3 sec)
-  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
   // Cross navigation states for clickable Job ID and Invoice links
   const [initialJobIdToView, setInitialJobIdToView] = useState<string | null>(null);
   const [initialInvoiceIdToView, setInitialInvoiceIdToView] = useState<string | null>(null);
@@ -2457,10 +2458,6 @@ export default function App() {
   const handleNavigateToInvoice = (invoiceId: string) => {
     setActiveTab('billing');
     setInitialInvoiceIdToView(invoiceId);
-  };
-
-  const triggerSaveNotification = (message: string, isError = false) => {
-    setSaveStatus({ type: isError ? 'error' : 'success', message });
   };
 
   React.useEffect(() => {
@@ -2509,6 +2506,12 @@ export default function App() {
 
     // Concurrency Guard: If in safe read-only mode, do not persist mutations or push to cloud
     if (concurrencyState.isReadOnly) {
+      tenantCollectionPersistRef.current = snapshot;
+      return;
+    }
+
+    // Snapshot restoration guard: do not re-push when receiving/applying data from cloud
+    if (isApplyingSnapshotRef.current) {
       tenantCollectionPersistRef.current = snapshot;
       return;
     }
@@ -2828,10 +2831,12 @@ export default function App() {
   React.useEffect(() => {
     if (!driveSyncState.isConnected || !activeTenant?.id) return;
 
-    // Periodic 15-second check: verifies if another device uploaded newer data
+    // Periodic 60-second check: verifies if another device uploaded newer data without flooding Drive API
     const pollInterval = setInterval(() => {
-      checkAndPullLatestFromDrive(true);
-    }, 15000);
+      if (document.visibilityState === 'visible') {
+        checkAndPullLatestFromDrive(true);
+      }
+    }, 60000);
 
     // Immediate check when switching to this tab or focusing browser window
     const handleVisibilityChange = () => {
@@ -2868,7 +2873,7 @@ export default function App() {
               setTimeout(() => setJustSynced(false), 3000);
             }
           } else {
-            const pushed = await handlePushSnapshotToDrive(false);
+            const pushed = await handlePushSnapshotToDrive(false, true);
             if (pushed) {
               setJustSynced(true);
               setTimeout(() => setJustSynced(false), 3000);
