@@ -49,7 +49,7 @@ Create a `.env` file in the project root (or copy `.env.example` to `.env`):
 ```env
 NODE_ENV=production
 PORT=3000
-MASTER_PIN=814986
+MASTER_PIN=your_secure_master_pin
 
 # PostgreSQL Configuration
 DB_HOST=postgres

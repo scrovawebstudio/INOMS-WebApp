@@ -161,14 +161,14 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
 
     const urlCode = url.searchParams.get('code') || url.searchParams.get('pin');
     const cleanCode = (body.code || body.pin || urlCode || '').toString().replace(/\D/g, '');
-    const configuredPin = extractEnvVar(env, 'MASTER_PIN', 'MASTER_ADMIN_PIN', 'ADMIN_PIN', 'PIN', 'VITE_MASTER_PIN', 'VITE_MASTER_ADMIN_PIN') || '814986';
+    const configuredPin = extractEnvVar(env, 'MASTER_ADMIN_PIN', 'MASTER_PIN', 'ADMIN_PIN', 'PIN');
 
     if (!cleanCode) {
       return jsonResponse({ success: false, message: 'Master PIN or 2FA code is required' }, 400);
     }
 
-    // Always accept configured PIN, master default 814986, or Microsoft 2FA TOTP
-    let isMasterValid = cleanCode === configuredPin || cleanCode === '814986';
+    // Authenticate strictly against the Cloudflare runtime variable / secret
+    let isMasterValid = Boolean(configuredPin && cleanCode === configuredPin);
 
     // Also check Supabase organizations table if configured
     if (!isMasterValid) {
@@ -181,7 +181,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
             .eq('id', 'org-admin')
             .maybeSingle();
 
-          if (data && (data.pin === cleanCode || data.secret_key === cleanCode)) {
+          if (data && ((data.pin && data.pin === cleanCode) || (data.secret_key && data.secret_key === cleanCode))) {
             isMasterValid = true;
           }
         } catch {
@@ -210,7 +210,9 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     return jsonResponse(
       {
         success: false,
-        message: 'Access Denied: Invalid Master Admin PIN. Master login is strictly restricted.'
+        message: configuredPin 
+          ? 'Access Denied: Invalid Master Admin PIN. Master login is strictly restricted.'
+          : 'Access Denied: Master Admin PIN is not configured in Cloudflare environment variables.'
       },
       401
     );
@@ -226,9 +228,9 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     }
 
     const { pin, username, password } = body;
-    const validPin = env.MASTER_PIN || env.MASTER_ADMIN_PIN || '814986';
+    const validPin = extractEnvVar(env, 'MASTER_ADMIN_PIN', 'MASTER_PIN', 'ADMIN_PIN', 'PIN');
 
-    if (pin && pin.toString().replace(/\D/g, '') === validPin) {
+    if (validPin && pin && pin.toString().replace(/\D/g, '') === validPin) {
       return jsonResponse({
         success: true,
         token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,

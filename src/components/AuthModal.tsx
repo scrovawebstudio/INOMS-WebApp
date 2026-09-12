@@ -737,15 +737,13 @@ export default function AuthModal({
     if (isMasterAdmin) {
       // Master Admin 2FA verification
       isValid = await verifyMasterPinViaApi(cleanCode);
-      if (!isValid && (cleanCode === '814986' || (await verifyTOTP('MASTERADMIN2FA37', cleanCode)))) {
+      if (!isValid && (await verifyTOTP('MASTERADMIN2FA37', cleanCode))) {
         isValid = true;
       }
     } else {
       const orgSecret = detectedTenant.secretKey || generateBase32Secret((detectedTenant.name || '') + (detectedTenant.ownerMobile || ''));
       apiResult = await verifyTOTPViaApi(detectedTenant.id, cleanCode, orgSecret);
       if (apiResult?.success) {
-        isValid = true;
-      } else if (cleanCode === '814986') {
         isValid = true;
       } else {
         // Server unreachable: run offline TOTP verification
@@ -808,24 +806,17 @@ export default function AuthModal({
     if (isMasterAdmin) {
       // Master Admin PIN verification
       isValid = await verifyMasterPinViaApi(cleanPin);
-      if (!isValid && cleanPin === '814986') {
-        isValid = true;
-      }
     } else {
       // Regular Organization PIN verification
-      if (cleanPin === '814986') {
+      const orgSecret = detectedTenant.secretKey || generateBase32Secret((detectedTenant.name || '') + (detectedTenant.ownerMobile || ''));
+      apiResult = await verifyOrgPinViaApi(detectedTenant.id, cleanPin, orgSecret);
+      if (apiResult?.success) {
         isValid = true;
       } else {
-        const orgSecret = detectedTenant.secretKey || generateBase32Secret((detectedTenant.name || '') + (detectedTenant.ownerMobile || ''));
-        apiResult = await verifyOrgPinViaApi(detectedTenant.id, cleanPin, orgSecret);
-        if (apiResult?.success) {
+        // Check local stored PIN as fallback
+        const tenantPin = (detectedTenant.pin || '').toString().trim();
+        if (tenantPin && tenantPin !== '••••••' && tenantPin === cleanPin) {
           isValid = true;
-        } else {
-          // Check local stored PIN as fallback
-          const tenantPin = (detectedTenant.pin || '').toString().trim();
-          if (tenantPin && tenantPin !== '••••••' && tenantPin === cleanPin) {
-            isValid = true;
-          }
         }
       }
     }
@@ -998,7 +989,7 @@ export default function AuthModal({
 
     // Master Admin verification
     let isValid = await verifyMasterPinViaApi(cleanCode);
-    if (!isValid && (cleanCode === '814986' || (await verifyTOTP('MASTERADMIN2FA37', cleanCode)))) {
+    if (!isValid && (await verifyTOTP('MASTERADMIN2FA37', cleanCode))) {
       isValid = true;
     }
 

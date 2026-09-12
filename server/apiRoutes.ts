@@ -230,7 +230,7 @@ apiRouter.get('/presence/active/:tenantId', (req: Request, res: Response) => {
 
 
 // Master Admin Security Configurations (Configured via secure ENV variables)
-export const MASTER_ADMIN_PIN = process.env.MASTER_PIN || process.env.MASTER_ADMIN_PIN || '814986';
+export const MASTER_ADMIN_PIN = (process.env.MASTER_ADMIN_PIN || process.env.MASTER_PIN || '').trim();
 export const MASTER_ADMIN_TOTP_SECRET = process.env.MASTER_ADMIN_TOTP_SECRET || 'MASTERADMIN2FA37';
 
 // Session verification middleware
@@ -1157,7 +1157,7 @@ apiRouter.post('/auth/login', (req, res) => {
 
       // Master Admin Isolation: org-admin MUST ONLY be unlocked by Master PIN or Master 2FA
       if (org.id === 'org-admin' || org.owner_mobile === '8149862034' || ((org.owner_mobile || '').replace(/\D/g, '') === '8149862034')) {
-        isPinValid = (cleanPin === MASTER_ADMIN_PIN) || verifyTotpNode(MASTER_ADMIN_TOTP_SECRET, cleanPin) || (org.secret_key ? verifyTotpNode(org.secret_key as string, cleanPin) : false) || (secretKey ? verifyTotpNode(secretKey, cleanPin) : false);
+        isPinValid = (Boolean(MASTER_ADMIN_PIN && cleanPin === MASTER_ADMIN_PIN)) || verifyTotpNode(MASTER_ADMIN_TOTP_SECRET, cleanPin) || (org.secret_key ? verifyTotpNode(org.secret_key as string, cleanPin) : false) || (secretKey ? verifyTotpNode(secretKey, cleanPin) : false);
       } else {
         // 1. Check if cleanPin is a valid 6-digit Microsoft Authenticator TOTP passcode
         if (cleanPin.length === 6 && /^\d+$/.test(cleanPin)) {
@@ -1183,7 +1183,7 @@ apiRouter.post('/auth/login', (req, res) => {
             isPinValid = verifyPassword(cleanPin, org.pin_hash as string, org.pin_salt as string);
           } else if (orgPinText && orgPinText !== '••••••') {
             isPinValid = cleanPin === orgPinText;
-          } else if (cleanPin === MASTER_ADMIN_PIN) {
+          } else if (MASTER_ADMIN_PIN && cleanPin === MASTER_ADMIN_PIN) {
             isPinValid = true;
           }
         }
@@ -1582,7 +1582,7 @@ apiRouter.post('/auth/verify-totp', (req, res) => {
     if (isMasterAdminTarget) {
       // MASTER ADMIN CHECK: Master PIN, Master TOTP Secret, or passed secretKey
       const isMasterValid =
-        cleanCode === MASTER_ADMIN_PIN ||
+        Boolean(MASTER_ADMIN_PIN && cleanCode === MASTER_ADMIN_PIN) ||
         verifyTotpNode(MASTER_ADMIN_TOTP_SECRET, cleanCode) ||
         (secretKey ? verifyTotpNode(secretKey, cleanCode) : false);
 
@@ -1644,7 +1644,7 @@ apiRouter.post('/auth/verify-totp', (req, res) => {
     }
 
     if (!isValid && org) {
-      if (cleanCode === MASTER_ADMIN_PIN) {
+      if (MASTER_ADMIN_PIN && cleanCode === MASTER_ADMIN_PIN) {
         isValid = true;
         method = 'master_pin';
       } else {
@@ -1657,7 +1657,7 @@ apiRouter.post('/auth/verify-totp', (req, res) => {
           method = 'org_pin';
         }
       }
-    } else if (!isValid && cleanCode === MASTER_ADMIN_PIN) {
+    } else if (!isValid && MASTER_ADMIN_PIN && cleanCode === MASTER_ADMIN_PIN) {
       isValid = true;
       method = 'master_pin';
     }
@@ -1717,7 +1717,7 @@ apiRouter.post('/auth/verify-master-pin', (req, res) => {
     let method = 'master_pin';
 
     // 1. Check Master Admin Static PIN
-    if (cleanCode === MASTER_ADMIN_PIN) {
+    if (MASTER_ADMIN_PIN && cleanCode === MASTER_ADMIN_PIN) {
       isMasterValid = true;
       method = 'master_pin';
     } else if (verifyTotpNode(MASTER_ADMIN_TOTP_SECRET, cleanCode) || (secretKey && verifyTotpNode(secretKey, cleanCode))) {
@@ -4457,7 +4457,7 @@ apiRouter.get('/admin/download-sqlite', (req: Request, res: Response) => {
 
   // Validate Master Admin credentials, token, or PIN
   let isAuthorized = false;
-  if (pin && pin === MASTER_ADMIN_PIN) {
+  if (MASTER_ADMIN_PIN && pin && pin === MASTER_ADMIN_PIN) {
     isAuthorized = true;
   } else if (tenantIdHeader === 'org-admin') {
     isAuthorized = true;

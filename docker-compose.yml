@@ -12,7 +12,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - MASTER_PIN=${MASTER_PIN:-814986}
+      - MASTER_PIN=${MASTER_PIN}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-inoms}

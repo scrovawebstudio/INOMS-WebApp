@@ -67,43 +67,14 @@ export async function loginViaApi(params: {
       return data;
     }
 
-    // Cloudflare Edge / Static fallback (HTTP 405 or 404 or network proxy error)
     if (res.status === 405 || res.status === 404 || res.status === 502 || !res.ok) {
-      if (cleanPin === '814986') {
-        const token = `master_admin_edge_${Date.now()}`;
-        setAuthToken(token, true);
-        return {
-          success: true,
-          token,
-          user: {
-            id: 'u_admin',
-            name: 'Master Admin',
-            role: 'Admin',
-            tenantId: params.tenantId || 'org-admin'
-          }
-        };
-      }
       return { success: false, message: data?.message || undefined };
     }
 
     return data || { success: false, message: 'Invalid credentials' };
   } catch (err: any) {
-    if (cleanPin === '814986') {
-      const token = `master_admin_edge_${Date.now()}`;
-      setAuthToken(token, true);
-      return {
-        success: true,
-        token,
-        user: {
-          id: 'u_admin',
-          name: 'Master Admin',
-          role: 'Admin',
-          tenantId: params.tenantId || 'org-admin'
-        }
-      };
-    }
     console.warn('Login API error:', err);
-    return { success: false, message: undefined };
+    return { success: false, message: err?.message || 'Network error during login' };
   }
 }
 
@@ -155,21 +126,11 @@ export async function verifyTOTPViaApi(
     }
 
     if (res.status === 405 || res.status === 404 || res.status === 502 || !res.ok) {
-      if (cleanCode === '814986') {
-        const token = `master_admin_edge_${Date.now()}`;
-        setAuthToken(token, true);
-        return { success: true, token };
-      }
       return { success: false, message: data?.message || undefined };
     }
 
     return data || { success: false, message: 'Invalid 2FA code' };
   } catch (err: any) {
-    if (cleanCode === '814986') {
-      const token = `master_admin_edge_${Date.now()}`;
-      setAuthToken(token, true);
-      return { success: true, token };
-    }
     return { success: false, message: undefined };
   }
 }
@@ -179,13 +140,21 @@ export async function verifyMasterPinViaApi(codeOrPin: string): Promise<boolean>
   if (!cleanCode) return false;
 
   try {
-    const res = await apiFetch('/api/auth/verify-master-pin', {
+    // 1. Primary: POST request to Cloudflare Worker / Server
+    let res = await apiFetch('/api/auth/verify-master-pin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code: cleanCode
       })
     });
+
+    // 2. Resilient fallback: if intermediate CDN / proxy returns 405, try GET query param
+    if (res.status === 405) {
+      res = await apiFetch(`/api/auth/verify-master-pin?code=${encodeURIComponent(cleanCode)}`, {
+        method: 'GET'
+      });
+    }
 
     if (res.ok) {
       const text = await res.text();
@@ -202,35 +171,23 @@ export async function verifyMasterPinViaApi(codeOrPin: string): Promise<boolean>
       if (data?.success) return true;
     }
 
-    // Cloudflare Edge / Static Asset Fallback (HTTP 405 Method Not Allowed or 404/502)
-    if (res.status === 405 || res.status === 404 || res.status === 502 || !res.ok) {
-      if (cleanCode === '814986') {
-        const token = `master_admin_edge_${Date.now()}`;
+    // 3. Authenticator TOTP fallback (for offline or local 2FA verification)
+    if (cleanCode.length === 6) {
+      const isTotp = await verifyTOTP('MASTERADMIN2FA37', cleanCode);
+      if (isTotp) {
+        const token = `master_admin_totp_${Date.now()}`;
         setAuthToken(token, true);
         return true;
-      }
-      if (cleanCode.length === 6) {
-        const isTotp = await verifyTOTP('MASTERADMIN2FA37', cleanCode);
-        if (isTotp) {
-          const token = `master_admin_edge_${Date.now()}`;
-          setAuthToken(token, true);
-          return true;
-        }
       }
     }
 
     return false;
   } catch (err) {
-    // Network failure / offline
-    if (cleanCode === '814986') {
-      const token = `master_admin_edge_${Date.now()}`;
-      setAuthToken(token, true);
-      return true;
-    }
+    // Offline TOTP check if network is completely unreachable
     if (cleanCode.length === 6) {
       const isTotp = await verifyTOTP('MASTERADMIN2FA37', cleanCode);
       if (isTotp) {
-        const token = `master_admin_edge_${Date.now()}`;
+        const token = `master_admin_totp_${Date.now()}`;
         setAuthToken(token, true);
         return true;
       }
@@ -269,41 +226,12 @@ export async function verifyOrgPinViaApi(
       return data;
     }
 
-    // When status is 405 (Method Not Allowed) from Cloudflare or offline:
     if (res.status === 405 || res.status === 404 || res.status === 502 || !res.ok) {
-      if (cleanPin === '814986') {
-        const token = `org_admin_edge_${Date.now()}`;
-        setAuthToken(token, true);
-        return {
-          success: true,
-          token,
-          user: {
-            id: `u_${tenantId}`,
-            name: 'Organization Admin',
-            role: 'Admin',
-            tenantId
-          }
-        };
-      }
-      return { success: false, message: undefined };
+      return { success: false, message: data?.message || undefined };
     }
 
     return data || { success: false, message: 'Invalid PIN or credentials' };
   } catch (err: any) {
-    if (cleanPin === '814986') {
-      const token = `org_admin_edge_${Date.now()}`;
-      setAuthToken(token, true);
-      return {
-        success: true,
-        token,
-        user: {
-          id: `u_${tenantId}`,
-          name: 'Organization Admin',
-          role: 'Admin',
-          tenantId
-        }
-      };
-    }
     return { success: false, message: undefined };
   }
 }

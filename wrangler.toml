@@ -11,10 +11,7 @@ not_found_handling = "single-page-application"
 
 [vars]
 NODE_VERSION = "20"
-MASTER_PIN = "814986"
-MASTER_ADMIN_PIN = "814986"
-# Set your Supabase credentials in Cloudflare dashboard or here:
-# SUPABASE_URL = "https://your-project.supabase.co"
-# SUPABASE_ANON_KEY = "your-supabase-anon-key"
+# Configure MASTER_ADMIN_PIN, MASTER_PIN, and Supabase credentials securely in Cloudflare Dashboard:
+# Workers & Pages -> inoms -> Settings -> Variables and Secrets
 
 
