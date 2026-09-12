@@ -689,7 +689,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return getAppSessionItem('authenticated') === 'true';
+    return getAppSessionItem('authenticated') === 'true' && Boolean(getAuthToken());
   });
 
   const [userRole, setUserRole] = useState<string>(() => {
