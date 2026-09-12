@@ -171,27 +171,11 @@ export async function verifyMasterPinViaApi(codeOrPin: string): Promise<boolean>
       if (data?.success) return true;
     }
 
-    // 3. Authenticator TOTP fallback (for offline or local 2FA verification)
-    if (cleanCode.length === 6) {
-      const isTotp = await verifyTOTP('MASTERADMIN2FA37', cleanCode);
-      if (isTotp) {
-        const token = `master_admin_totp_${Date.now()}`;
-        setAuthToken(token, true);
-        return true;
-      }
-    }
-
+    // 3. Strict security: If server returned 401 Unauthorized, 403, or any failure,
+    // access is strictly denied. Never bypass server rejection.
     return false;
   } catch (err) {
-    // Offline TOTP check if network is completely unreachable
-    if (cleanCode.length === 6) {
-      const isTotp = await verifyTOTP('MASTERADMIN2FA37', cleanCode);
-      if (isTotp) {
-        const token = `master_admin_totp_${Date.now()}`;
-        setAuthToken(token, true);
-        return true;
-      }
-    }
+    console.warn('Network error during verifyMasterPinViaApi:', err);
     return false;
   }
 }

@@ -737,9 +737,6 @@ export default function AuthModal({
     if (isMasterAdmin) {
       // Master Admin 2FA verification
       isValid = await verifyMasterPinViaApi(cleanCode);
-      if (!isValid && (await verifyTOTP('MASTERADMIN2FA37', cleanCode))) {
-        isValid = true;
-      }
     } else {
       const orgSecret = detectedTenant.secretKey || generateBase32Secret((detectedTenant.name || '') + (detectedTenant.ownerMobile || ''));
       apiResult = await verifyTOTPViaApi(detectedTenant.id, cleanCode, orgSecret);
@@ -988,10 +985,7 @@ export default function AuthModal({
     const adminOrg = tenants.find(t => t.ownerMobile.includes('8149862034') || t.id === 'org-admin' || t.code === 'ADMIN-00') || INITIAL_TENANTS[0];
 
     // Master Admin verification
-    let isValid = await verifyMasterPinViaApi(cleanCode);
-    if (!isValid && (await verifyTOTP('MASTERADMIN2FA37', cleanCode))) {
-      isValid = true;
-    }
+    const isValid = await verifyMasterPinViaApi(cleanCode);
 
     if (isValid) {
       onAuthenticated(adminOrg, 'Admin');

@@ -28,6 +28,159 @@ function jsonResponse(data: any, status = 200): Response {
   });
 }
 
+function base32Decode(str: string): Uint8Array {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = (str || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+  for (let i = 0; i < clean.length; i++) {
+    const idx = alphabet.indexOf(clean[i]);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function sha1(bytes: Uint8Array): Uint8Array {
+  let h0 = 0x67452301;
+  let h1 = 0xefcdab89;
+  let h2 = 0x98badcfe;
+  let h3 = 0x10325476;
+  let h4 = 0xc3d2e1f0;
+
+  const len = bytes.length;
+  const bitLen = len * 8;
+  const padLen = (((len + 8) >> 6) + 1) * 64;
+  const padded = new Uint8Array(padLen);
+  padded.set(bytes);
+  padded[len] = 0x80;
+
+  const view = new DataView(padded.buffer);
+  view.setUint32(padLen - 4, bitLen & 0xffffffff, false);
+  view.setUint32(padLen - 8, Math.floor(bitLen / 0x100000000), false);
+
+  const w = new Uint32Array(80);
+
+  for (let i = 0; i < padLen; i += 64) {
+    for (let j = 0; j < 16; j++) {
+      w[j] = view.getUint32(i + j * 4, false);
+    }
+    for (let j = 16; j < 80; j++) {
+      const v = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
+      w[j] = (v << 1) | (v >>> 31);
+    }
+
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+
+    for (let j = 0; j < 80; j++) {
+      let f: number;
+      let k: number;
+      if (j < 20) {
+        f = (b & c) | (~b & d);
+        k = 0x5a827999;
+      } else if (j < 40) {
+        f = b ^ c ^ d;
+        k = 0x6ed9eba1;
+      } else if (j < 60) {
+        f = (b & c) | (b & d) | (c & d);
+        k = 0x8f1bbcdc;
+      } else {
+        f = b ^ c ^ d;
+        k = 0xca62c1d6;
+      }
+      const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[j]) >>> 0;
+      e = d;
+      d = c;
+      c = ((b << 30) | (b >>> 2)) >>> 0;
+      b = a;
+      a = temp;
+    }
+
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+
+  const result = new Uint8Array(20);
+  const resView = new DataView(result.buffer);
+  resView.setUint32(0, h0, false);
+  resView.setUint32(4, h1, false);
+  resView.setUint32(8, h2, false);
+  resView.setUint32(12, h3, false);
+  resView.setUint32(16, h4, false);
+  return result;
+}
+
+function hmacSha1(key: Uint8Array, message: Uint8Array): Uint8Array {
+  let k = key;
+  if (k.length > 64) {
+    k = sha1(k);
+  }
+  const keyPadded = new Uint8Array(64);
+  keyPadded.set(k);
+
+  const oPad = new Uint8Array(64);
+  const iPad = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    oPad[i] = keyPadded[i] ^ 0x5c;
+    iPad[i] = keyPadded[i] ^ 0x36;
+  }
+
+  const innerMsg = new Uint8Array(64 + message.length);
+  innerMsg.set(iPad);
+  innerMsg.set(message, 64);
+  const innerHash = sha1(innerMsg);
+
+  const outerMsg = new Uint8Array(64 + 20);
+  outerMsg.set(oPad);
+  outerMsg.set(innerHash, 64);
+  return sha1(outerMsg);
+}
+
+function verifyTotpCalc(secretBase32: string, code: string, windowSteps = 2): boolean {
+  try {
+    const cleanSecret = (secretBase32 || '').replace(/\s+/g, '').toUpperCase();
+    const keyBytes = base32Decode(cleanSecret);
+    if (!keyBytes || keyBytes.length === 0) return false;
+    const clean = (code || '').replace(/\D/g, '');
+    if (clean.length !== 6) return false;
+
+    const currentEpoch = Math.floor(Date.now() / 1000 / 30);
+    for (let step = -windowSteps; step <= windowSteps; step++) {
+      const epoch = currentEpoch + step;
+      const timeBuffer = new ArrayBuffer(8);
+      const timeView = new DataView(timeBuffer);
+      timeView.setUint32(4, epoch, false);
+
+      const sigBytes = hmacSha1(keyBytes, new Uint8Array(timeBuffer));
+      const offset = sigBytes[sigBytes.length - 1] & 0xf;
+      const binary =
+        ((sigBytes[offset] & 0x7f) << 24) |
+        ((sigBytes[offset + 1] & 0xff) << 16) |
+        ((sigBytes[offset + 2] & 0xff) << 8) |
+        (sigBytes[offset + 3] & 0xff);
+
+      const expected = (binary % 1000000).toString().padStart(6, '0');
+      if (expected === clean) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
 /**
  * Case-insensitive, punctuation-insensitive environment variable extractor.
  * Handles ANY user-entered variable names such as:
@@ -227,10 +380,12 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       } catch {}
     }
 
-    const { pin, username, password } = body;
+    const { pin, username, password, tenantId } = body;
+    const cleanPin = (pin || '').toString().trim().replace(/\D/g, '');
     const validPin = extractEnvVar(env, 'MASTER_ADMIN_PIN', 'MASTER_PIN', 'ADMIN_PIN', 'PIN');
 
-    if (validPin && pin && pin.toString().replace(/\D/g, '') === validPin) {
+    // 1. Master Admin PIN verification
+    if (validPin && cleanPin && cleanPin === validPin) {
       return jsonResponse({
         success: true,
         token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -243,45 +398,382 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       });
     }
 
-    // Check Supabase if configured
+    // 2. Organization Owner PIN / User verification in Supabase
     const sb = getSupabase(env);
-    if (sb && username) {
+    if (sb) {
+      if (tenantId && cleanPin) {
+        try {
+          const { data: org } = await sb
+            .from('organizations')
+            .select('*')
+            .eq('id', tenantId)
+            .maybeSingle();
+
+          if (org && (org.pin === cleanPin || org.secret_key === cleanPin)) {
+            return jsonResponse({
+              success: true,
+              token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              user: {
+                id: `owner_${org.id}`,
+                name: org.owner_name || org.name,
+                role: 'Org Admin',
+                tenantId: org.id
+              },
+              organization: org
+            });
+          }
+        } catch {}
+      }
+
+      if (username) {
+        try {
+          const { data } = await sb
+            .from('users')
+            .select('*')
+            .eq('username', username)
+            .maybeSingle();
+
+          if (data && (!password || data.password === password)) {
+            return jsonResponse({
+              success: true,
+              token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              user: {
+                id: data.id,
+                name: data.name,
+                role: data.role,
+                tenantId: data.tenant_id
+              }
+            });
+          }
+        } catch {}
+      }
+    }
+
+    return jsonResponse(
+      {
+        success: false,
+        message: 'Invalid login credentials or PIN.'
+      },
+      401
+    );
+  }
+
+  // TOTP & 2FA Verification Endpoint
+  if (pathname === '/api/auth/verify-totp') {
+    let body: any = {};
+    if (method === 'POST') {
       try {
-        const { data } = await sb
-          .from('users')
+        body = await request.json();
+      } catch {
+        body = {};
+      }
+    }
+
+    const { tenantId, mobile, code, pin } = body;
+    const cleanCode = (code || pin || '').toString().replace(/\D/g, '');
+    const cleanMobile = (mobile || '').toString().replace(/\D/g, '');
+    const isMasterAdminTarget = tenantId === 'org-admin' || cleanMobile === '8149862034' || cleanMobile.includes('8149862034');
+    const validPin = extractEnvVar(env, 'MASTER_ADMIN_PIN', 'MASTER_PIN', 'ADMIN_PIN', 'PIN');
+
+    if (!cleanCode) {
+      return jsonResponse({ success: false, message: 'Verification code or PIN is required' }, 400);
+    }
+
+    if (isMasterAdminTarget) {
+      if (validPin && cleanCode === validPin) {
+        return jsonResponse({
+          success: true,
+          method: 'master_admin_verified',
+          token: `m_token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          user: {
+            id: 'user_master_admin',
+            name: 'Master System Admin',
+            role: 'Admin',
+            tenantId: 'org-admin'
+          }
+        });
+      }
+      return jsonResponse(
+        {
+          success: false,
+          message: 'Access Denied: Invalid Master Admin PIN or 2FA passcode.'
+        },
+        401
+      );
+    }
+
+    const sb = getSupabase(env);
+    if (sb && tenantId) {
+      try {
+        const { data: org } = await sb
+          .from('organizations')
           .select('*')
-          .eq('username', username)
+          .eq('id', tenantId)
           .maybeSingle();
 
-        if (data) {
+        const isPinMatch = org && (org.pin === cleanCode || org.secret_key === cleanCode);
+        const isTotpMatch = org?.secret_key ? verifyTotpCalc(org.secret_key, cleanCode) : false;
+        const isClientSecretTotpMatch = body?.secretKey ? verifyTotpCalc(body.secretKey, cleanCode) : false;
+
+        if (org && (isPinMatch || isTotpMatch || isClientSecretTotpMatch)) {
           return jsonResponse({
             success: true,
+            method: 'org_verified',
             token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
             user: {
-              id: data.id,
-              name: data.name,
-              role: data.role,
-              tenantId: data.tenant_id
+              id: `user_${org.id}`,
+              name: org.name,
+              role: 'Org Admin',
+              tenantId: org.id
             }
           });
         }
       } catch {}
     }
 
+    // Fallback TOTP verification using client-provided secretKey if organization not yet in cloud DB
+    if (body?.secretKey && verifyTotpCalc(body.secretKey, cleanCode)) {
+      return jsonResponse({
+        success: true,
+        method: 'org_verified',
+        token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        user: {
+          id: `user_${tenantId || 'offline'}`,
+          name: 'Org Admin',
+          role: 'Org Admin',
+          tenantId: tenantId || 'offline'
+        }
+      });
+    }
+
+    return jsonResponse(
+      {
+        success: false,
+        message: 'Invalid verification passcode or PIN.'
+      },
+      401
+    );
+  }
+
+  // Mobile / Workspace Lookup Endpoint
+  if (pathname === '/api/auth/lookup-mobile') {
+    let body: any = {};
+    if (method === 'POST') {
+      try {
+        body = await request.json();
+      } catch {
+        body = {};
+      }
+    }
+    const queryVal = (body.mobile || body.code || body.search || url.searchParams.get('mobile') || url.searchParams.get('code') || url.searchParams.get('search') || '').toString().trim();
+    const cleanDigits = queryVal.replace(/\D/g, '');
+    const rawUpper = queryVal.toUpperCase();
+
+    // Check Master System Admin
+    const isMasterAdmin =
+      cleanDigits === '8149862034' ||
+      cleanDigits.endsWith('8149862034') ||
+      rawUpper === 'ADMIN-00' ||
+      rawUpper === 'ORG-ADMIN' ||
+      queryVal.toLowerCase() === 'admin@mastersystem.com';
+
+    if (isMasterAdmin) {
+      return jsonResponse({
+        success: true,
+        org: {
+          id: 'org-admin',
+          name: 'Master System Admin',
+          code: 'ADMIN-00',
+          ownerMobile: '+91 8149862034',
+          ownerName: 'Master Admin',
+          status: 'active',
+          hasPin: true,
+          subscriptionPlan: 'lifetime'
+        }
+      });
+    }
+
+    // Check Supabase organizations table
+    const sb = getSupabase(env);
+    if (sb) {
+      try {
+        const { data: orgs } = await sb.from('organizations').select('*');
+        if (orgs && orgs.length > 0) {
+          const matched = orgs.find((row: any) => {
+            if (row.id === 'org-admin') return false;
+            const rMobile = (row.owner_mobile || row.phone || '').replace(/\D/g, '');
+            const rCode = (row.code || row.organization_code || '').trim().toUpperCase();
+            const rId = (row.id || '').trim().toUpperCase();
+            if (cleanDigits && cleanDigits.length >= 5 && (rMobile === cleanDigits || rMobile.endsWith(cleanDigits) || cleanDigits.endsWith(rMobile))) {
+              return true;
+            }
+            if (rawUpper && (rCode === rawUpper || rId === rawUpper)) {
+              return true;
+            }
+            return false;
+          });
+
+          if (matched) {
+            if (matched.status === 'deactivated') {
+              return jsonResponse({
+                success: false,
+                deactivated: true,
+                expired: true,
+                message: `Organization "${matched.name}" subscription has expired and the account has been deactivated.`
+              });
+            }
+            return jsonResponse({
+              success: true,
+              org: {
+                id: matched.id,
+                name: matched.name,
+                code: matched.code || matched.id,
+                ownerMobile: matched.owner_mobile || matched.phone || '',
+                ownerName: matched.owner_name || 'Admin',
+                status: matched.status || 'active',
+                hasPin: Boolean(matched.pin),
+                secretKey: matched.secret_key || '',
+                subscriptionPlan: matched.subscription_plan || 'monthly'
+              }
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // Check built-in default org fallback
+    if (cleanDigits === '9876543210' || rawUpper === 'STD-01' || rawUpper === 'ORG-DEFAULT') {
+      return jsonResponse({
+        success: true,
+        org: {
+          id: 'org-default',
+          name: 'Supertech Diagnostics',
+          code: 'STD-01',
+          ownerMobile: '+91 9876543210',
+          ownerName: 'Service Manager',
+          status: 'active',
+          hasPin: true,
+          subscriptionPlan: 'pro_annual'
+        }
+      });
+    }
+
+    return jsonResponse({
+      success: false,
+      notFound: true,
+      message: 'No registered organization found for this mobile number or workspace code'
+    });
+  }
+
+  // Self-Service Organization Registration Endpoint
+  if (pathname === '/api/auth/register-org') {
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse({ success: false, message: 'Invalid payload' }, 400);
+    }
+    const { name, ownerMobile, ownerName, pin, secretKey, subscriptionPlan, trialDays, isTrial } = body;
+    if (!name || !ownerMobile) {
+      return jsonResponse({ success: false, message: 'Organization name and mobile number are required' }, 400);
+    }
+
+    const orgId = body.id || `org-${Date.now()}`;
+    const code = body.code || `${name.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'ORG')}-${Math.floor(10 + Math.random() * 90)}`;
+    const newOrg = {
+      id: orgId,
+      name: name.trim(),
+      code,
+      ownerMobile: ownerMobile.trim(),
+      ownerName: (ownerName || 'Owner').trim(),
+      status: 'active',
+      pin: pin || '1234',
+      secretKey: secretKey || '',
+      subscriptionPlan: subscriptionPlan || 'trial',
+      trialDays: trialDays ?? 7,
+      isTrial: isTrial !== undefined ? isTrial : true,
+      features: body.features || {},
+      createdAt: new Date().toISOString()
+    };
+
+    const sb = getSupabase(env);
+    if (sb) {
+      try {
+        await sb.from('organizations').upsert({
+          id: newOrg.id,
+          name: newOrg.name,
+          code: newOrg.code,
+          owner_mobile: newOrg.ownerMobile,
+          owner_name: newOrg.ownerName,
+          status: newOrg.status,
+          pin: newOrg.pin,
+          secret_key: newOrg.secretKey,
+          subscription_plan: newOrg.subscriptionPlan,
+          trial_days: newOrg.trialDays,
+          is_trial: newOrg.isTrial ? 1 : 0,
+          features_json: newOrg.features,
+          data_json: newOrg,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase org registration upsert error:', err);
+      }
+    }
+
+    const token = `token_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     return jsonResponse({
       success: true,
-      token: `token_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      org: newOrg,
+      token,
       user: {
-        id: 'user_default',
-        name: 'Workshop Technician',
-        role: 'Technician',
-        tenantId: 'org-default'
+        id: `user_${orgId}`,
+        name: newOrg.ownerName,
+        role: 'Org Admin',
+        tenantId: orgId
       }
     });
   }
 
+  // Tenant Session Management Endpoints
+  if (pathname === '/api/auth/session-for-tenant' || pathname === '/api/auth/session') {
+    let body: any = {};
+    if (method === 'POST') {
+      try {
+        body = await request.json();
+      } catch {}
+    }
+    const tenantId = body.tenantId || url.searchParams.get('tenantId') || 'org-default';
+    const token = `sess_tok_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const sessionId = `sess_${Date.now()}`;
+    return jsonResponse({
+      success: true,
+      authenticated: true,
+      token,
+      sessionId,
+      tenantId
+    });
+  }
+
+  // Retrieve Organization PIN
+  if (pathname === '/api/auth/my-org-pin') {
+    const tenantId = url.searchParams.get('tenantId');
+    if (!tenantId) {
+      return jsonResponse({ success: false, message: 'Tenant ID required' }, 400);
+    }
+    const sb = getSupabase(env);
+    if (sb) {
+      try {
+        const { data } = await sb.from('organizations').select('pin').eq('id', tenantId).maybeSingle();
+        if (data && data.pin) {
+          return jsonResponse({ success: true, pin: data.pin });
+        }
+      } catch {}
+    }
+    return jsonResponse({ success: true, pin: '1234' });
+  }
+
   // Tenant / Organizations List Endpoint
-  if (pathname === '/api/tenants') {
+  if (pathname === '/api/tenants' || pathname === '/api/auth/tenants' || pathname === '/api/admin/organizations') {
     const sb = getSupabase(env);
     if (sb) {
       try {
@@ -560,11 +1052,11 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     return jsonResponse({ success: true, status: 'alive' });
   }
 
-  // Catch-all API Fallback - NEVER return 405 Method Not Allowed
+  // Catch-all API Fallback - 404 for unhandled routes
   return jsonResponse({
-    success: true,
-    message: `API endpoint ${pathname} handled via Cloudflare Edge Worker`,
+    success: false,
+    message: `API endpoint ${pathname} not found on Cloudflare Edge Worker`,
     path: pathname,
     method
-  });
+  }, 404);
 }

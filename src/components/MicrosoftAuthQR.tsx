@@ -14,6 +14,7 @@ import {
   X,
   Lock
 } from 'lucide-react';
+import { resolveApiUrl } from '../lib/serverConfig';
 
 interface MicrosoftAuthQRProps {
   orgName: string;
@@ -219,9 +220,15 @@ export async function verifyTOTP(
   const clean = (inputCode || '').replace(/\D/g, '');
   if (!clean || clean.length !== 6) return false;
 
+  const isMasterAdmin =
+    secretBase32 === 'MASTERADMIN2FA37' ||
+    tenantIdOrMobile === 'org-admin' ||
+    tenantIdOrMobile === '8149862034' ||
+    (tenantIdOrMobile && tenantIdOrMobile.includes('8149862034'));
+
   try {
-    // 1. Call standard verify-totp API endpoint
-    const res = await fetch('/api/auth/verify-totp', {
+    // 1. Call standard verify-totp API endpoint using resolved server URL
+    const res = await fetch(resolveApiUrl('/api/auth/verify-totp'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -233,14 +240,24 @@ export async function verifyTOTP(
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.success) return true;
+      if (data.success && (data.token || data.valid === true || data.verified === true || data.method)) {
+        return true;
+      }
+      return false;
+    }
+    // If master admin authentication failed on the server, strictly deny access
+    if (isMasterAdmin) {
+      return false;
     }
   } catch (err) {
     console.warn('API verify-totp call error in client:', err);
+    if (isMasterAdmin) {
+      return false;
+    }
   }
 
-  // 2. Local client-side TOTP calculation (with ±10 min clock drift tolerance)
-  if (secretBase32) {
+  // 2. Local client-side TOTP calculation (with clock drift tolerance) for offline orgs
+  if (secretBase32 && !isMasterAdmin) {
     const timeOffsets: number[] = [];
     for (let s = -600; s <= 600; s += 30) {
       timeOffsets.push(s);
