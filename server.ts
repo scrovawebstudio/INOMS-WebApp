@@ -36,6 +36,9 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Serve static assets from public/ (logos, icons, favicon, apk)
+app.use(express.static(path.join(process.cwd(), 'public')));
+
 // Direct APK Download route for Android Technicians
 app.get(['/Inoms-android.apk', '/inoms-android.apk', '/downloads/inoms-android.apk', '/downloads/Inoms-android.apk'], (_req, res) => {
   const possiblePaths = [

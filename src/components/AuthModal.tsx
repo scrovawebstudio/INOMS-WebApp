@@ -1178,7 +1178,14 @@ export default function AuthModal({
           <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="p-2 sm:p-3 bg-teal-500/20 border border-teal-400/30 rounded-xl sm:rounded-2xl text-teal-400" style={{ padding:'2px' }}>
               {/* <ShieldCheck className="w-5 h-5 sm:w-7 h-7" /> */}
-              <img src="/INOMS.png" alt="INOMS Logo" className="w-5 h-5 sm:w-7 h-7 rounded-xl sm:rounded-2xl" style={{ width: '50px', height: '50px' }} />
+              <img 
+                src="/INOMS.png" 
+                alt="INOMS Logo" 
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-contain bg-white/10 p-0.5"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/inoms_logo.jpg';
+                }}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">

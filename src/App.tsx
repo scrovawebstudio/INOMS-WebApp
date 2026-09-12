@@ -617,6 +617,14 @@ export default function App() {
 
   React.useEffect(() => {
     document.title = `${systemAppName} - ${systemAppTagline}`;
+    try {
+      const favicons = document.querySelectorAll("link[rel*='icon']");
+      if (favicons.length > 0) {
+        favicons.forEach((el) => {
+          (el as HTMLLinkElement).href = '/favicon-32x32.png';
+        });
+      }
+    } catch {}
   }, [systemAppName, systemAppTagline]);
 
   React.useEffect(() => {
@@ -6087,6 +6095,9 @@ export default function App() {
                     src={systemAppLogo} 
                     alt={`${systemAppName} Logo`} 
                     className="w-full h-full object-contain" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/inoms_logo.jpg';
+                    }}
                   />
                 </div>
                 <div className="text-left overflow-hidden">
@@ -6319,6 +6330,9 @@ export default function App() {
                 src={systemAppLogo} 
                 alt={`${systemAppName} Logo`} 
                 className="w-full h-full object-contain" 
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/inoms_logo.jpg';
+                }}
               />
             </div>
             <div className="text-left overflow-hidden">
@@ -6454,7 +6468,14 @@ export default function App() {
               {/* Organisation Logo / Badge (Larger & Attractive) */}
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-base shrink-0 shadow-xs overflow-hidden border border-teal-700/20">
                 {companyConfig.logoUrl ? (
-                  <img src={companyConfig.logoUrl} alt="Organization Logo" className="w-full h-full object-contain bg-white rounded-2xl p-0.5" />
+                  <img 
+                    src={companyConfig.logoUrl} 
+                    alt="Organization Logo" 
+                    className="w-full h-full object-contain bg-white rounded-2xl p-0.5" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/inoms_logo.jpg';
+                    }}
+                  />
                 ) : (
                   <div className="w-full h-full rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-black text-base sm:text-lg shadow-inner">
                     {(activeTenant?.name || activeCompany || 'O').charAt(0).toUpperCase()}
