@@ -21,6 +21,39 @@ const CORS_HEADERS: Record<string, string> = {
   'Content-Type': 'application/json; charset=utf-8'
 };
 
+// Stable tenant revision state: only advances when data is actively written to avoid continuous polling loops
+const tenantRevisions = new Map<string, number>();
+
+// In-memory tenant fallback store to retain newly registered and updated organizations
+const registeredOrgs = new Map<string, any>([
+  [
+    'org-admin',
+    {
+      id: 'org-admin',
+      name: 'Master System Admin',
+      code: 'ADMIN-00',
+      ownerMobile: '+91 8149862034',
+      ownerName: 'Master Admin',
+      status: 'active',
+      subscriptionPlan: 'lifetime',
+      hasPin: true
+    }
+  ],
+  [
+    'org-default',
+    {
+      id: 'org-default',
+      name: 'Supertech Diagnostics',
+      code: 'STD-01',
+      ownerMobile: '+91 9876543210',
+      ownerName: 'Rahul Sharma',
+      status: 'active',
+      subscriptionPlan: 'pro_annual',
+      hasPin: true
+    }
+  ]
+]);
+
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -641,7 +674,46 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       } catch {}
     }
 
-    // Check built-in default org fallback
+    // Check built-in or in-memory registered org fallback
+    const memOrg = Array.from(registeredOrgs.values()).find((o: any) => {
+      if (o.id === 'org-admin') return false;
+      const rMobile = (o.ownerMobile || '').replace(/\D/g, '');
+      const rCode = (o.code || '').trim().toUpperCase();
+      const rId = (o.id || '').trim().toUpperCase();
+      if (cleanDigits && cleanDigits.length >= 5 && (rMobile === cleanDigits || rMobile.endsWith(cleanDigits) || cleanDigits.endsWith(rMobile))) {
+        return true;
+      }
+      if (rawUpper && (rCode === rawUpper || rId === rawUpper)) {
+        return true;
+      }
+      return false;
+    });
+
+    if (memOrg) {
+      if (memOrg.status === 'deactivated') {
+        return jsonResponse({
+          success: false,
+          deactivated: true,
+          expired: true,
+          message: `Organization "${memOrg.name}" subscription has expired and the account has been deactivated.`
+        });
+      }
+      return jsonResponse({
+        success: true,
+        org: {
+          id: memOrg.id,
+          name: memOrg.name,
+          code: memOrg.code || memOrg.id,
+          ownerMobile: memOrg.ownerMobile || '',
+          ownerName: memOrg.ownerName || 'Admin',
+          status: memOrg.status || 'active',
+          hasPin: Boolean(memOrg.pin),
+          secretKey: memOrg.secretKey || '',
+          subscriptionPlan: memOrg.subscriptionPlan || 'monthly'
+        }
+      });
+    }
+
     if (cleanDigits === '9876543210' || rawUpper === 'STD-01' || rawUpper === 'ORG-DEFAULT') {
       return jsonResponse({
         success: true,
@@ -695,6 +767,9 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       features: body.features || {},
       createdAt: new Date().toISOString()
     };
+
+    // Save to in-memory fallback map so organizations persist across worker requests even without Supabase
+    registeredOrgs.set(newOrg.id, newOrg);
 
     const sb = getSupabase(env);
     if (sb) {
@@ -803,22 +878,22 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
 
     return jsonResponse({
       success: true,
-      tenants: [
-        {
-          id: 'org-admin',
-          name: 'Master System Admin',
-          code: 'ADMIN-00',
-          status: 'active',
-          subscriptionPlan: 'lifetime'
-        },
-        {
-          id: 'org-default',
-          name: 'Supertech Diagnostics',
-          code: 'STD-01',
-          status: 'active',
-          subscriptionPlan: 'pro_annual'
-        }
-      ]
+      tenants: Array.from(registeredOrgs.values()).map(o => ({
+        id: o.id,
+        name: o.name,
+        code: o.code,
+        ownerMobile: o.ownerMobile || '',
+        ownerName: o.ownerName || '',
+        status: o.status || 'active',
+        secretKey: o.secretKey || '',
+        pin: o.pin || '',
+        subscriptionPlan: o.subscriptionPlan || 'trial',
+        subscriptionStartDate: o.subscriptionStartDate || '',
+        subscriptionEndDate: o.subscriptionEndDate || '',
+        trialDays: o.trialDays || 7,
+        isTrial: Boolean(o.isTrial),
+        features: o.features || {}
+      }))
     });
   }
 
@@ -834,6 +909,11 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     if (!org || !org.id) {
       return jsonResponse({ success: false, message: 'Organization ID is required' }, 400);
     }
+
+    // Persist in worker in-memory store so it survives across requests even without Supabase
+    const existing = registeredOrgs.get(org.id) || {};
+    const mergedOrg = { ...existing, ...org };
+    registeredOrgs.set(org.id, mergedOrg);
 
     const sb = getSupabase(env);
     if (sb) {
@@ -862,7 +942,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       }
     }
 
-    return jsonResponse({ success: true, org });
+    return jsonResponse({ success: true, org: mergedOrg });
   }
 
   // Organization Deletion / Deactivation Endpoint
@@ -874,6 +954,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
 
     const orgId = body?.id;
     if (orgId) {
+      registeredOrgs.delete(orgId);
       const sb = getSupabase(env);
       if (sb) {
         try {
@@ -926,10 +1007,11 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   // 1. Sync Version (Lightweight <5ms check)
   if (pathname === '/api/sync/version') {
     const tenantId = url.searchParams.get('tenantId') || request.headers.get('x-tenant-id') || 'org-admin';
+    const currentRevision = tenantRevisions.get(tenantId) || 1000;
     return jsonResponse({
       success: true,
       tenantId,
-      currentRevision: Date.now(),
+      currentRevision,
       timestamp: new Date().toISOString()
     });
   }
@@ -973,10 +1055,11 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   // 3. Sync Pull Endpoint (Delta Changes)
   if (pathname === '/api/sync/pull') {
     const tenantId = url.searchParams.get('tenantId') || request.headers.get('x-tenant-id') || 'org-admin';
+    const currentRevision = tenantRevisions.get(tenantId) || 1000;
     return jsonResponse({
       success: true,
       tenantId,
-      currentRevision: Date.now(),
+      currentRevision,
       hasChanges: false,
       changes: []
     });
@@ -996,6 +1079,8 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     const tenantId = body.tenantId || request.headers.get('x-tenant-id') || 'org-admin';
     const { companyConfig, collections, deletedIds } = body;
     const sb = getSupabase(env);
+    const newRev = Date.now();
+    tenantRevisions.set(tenantId, newRev);
 
     if (sb && tenantId) {
       try {
@@ -1072,6 +1157,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     const sb = getSupabase(env);
 
     if (sb && tenantId && operations.length > 0) {
+      tenantRevisions.set(tenantId, Date.now());
       try {
         for (const op of operations) {
           const entity = op.entity;
@@ -1206,6 +1292,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     const sb = getSupabase(env);
 
     if (sb && tenantId) {
+      tenantRevisions.set(tenantId, Date.now());
       try {
         // Handle config collection
         if (collectionName === 'config' && (config || items)) {

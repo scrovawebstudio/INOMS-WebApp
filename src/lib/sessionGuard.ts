@@ -456,10 +456,22 @@ class SessionGuardCoordinator {
     // Immediate check
     this.runHeartbeatCycle();
 
-    // Heartbeat every 4 seconds for rapid cross-device synchronization
+    // Heartbeat every 60 seconds when active to prevent spamming server while active
     this.heartbeatTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       this.runHeartbeatCycle();
-    }, 4000);
+    }, 60000);
+
+    // Fast check on window focus or tab visibility
+    if (typeof window !== 'undefined') {
+      const handleWake = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible' && this.isRunning) {
+          this.runHeartbeatCycle();
+        }
+      };
+      window.addEventListener('focus', handleWake);
+      document.addEventListener('visibilitychange', handleWake);
+    }
   }
 
   public stop() {
@@ -629,6 +641,11 @@ class SessionGuardCoordinator {
       try {
         localStorage.setItem(`${LOCAL_PRESENCE_PREFIX}${this.activeTenantId}`, JSON.stringify(myPresence));
       } catch {}
+    }
+
+    // When tab is hidden/in background, skip remote network fetch to prevent draining network/battery
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
     }
 
     // 2. Server heartbeat & conflict query

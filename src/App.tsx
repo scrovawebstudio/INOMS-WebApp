@@ -1374,7 +1374,7 @@ export default function App() {
     }
   }, [homeServerSyncEnabled, syncOfflineChangesToServer]);
 
-  // Periodic Server Health Check every 4 seconds + on window focus & online events (Active only when authenticated)
+  // Periodic Server Health Check every 60s (was 5s) + on window focus & online events (Active only when authenticated)
   React.useEffect(() => {
     if (!isAuthenticated || showAuthModal || !homeServerSyncEnabled) {
       setServerStatus('offline');
@@ -1382,7 +1382,10 @@ export default function App() {
       return;
     }
     checkServerStatus();
-    const interval = setInterval(checkServerStatus, 5000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      checkServerStatus();
+    }, 60000);
 
     const onFocus = () => checkServerStatus();
     const onOnline = () => checkServerStatus();
@@ -2082,10 +2085,8 @@ export default function App() {
       setIsQuotaExhaustedState(isQuotaExhausted());
     };
     window.addEventListener('inoms_sync_queue_changed', handleQueueChange);
-    const interval = setInterval(handleQueueChange, 3000);
     return () => {
       window.removeEventListener('inoms_sync_queue_changed', handleQueueChange);
-      clearInterval(interval);
     };
   }, []);
 
@@ -2223,11 +2224,12 @@ export default function App() {
 
     // 3. Periodic Home Server check to log out older remote sessions if a newer session claimed ownership
     const sessionPollTimer = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const status = await checkHomeServerSession(activeTenant.id, sessionUserId);
       if (status && status.activeSessionId && status.activeSessionId !== currentSessionId) {
         handleDisplacement(status.deviceInfo || 'Remote Device');
       }
-    }, 12000);
+    }, 45000);
 
     return () => {
       if (bc) {
@@ -2396,13 +2398,13 @@ export default function App() {
       }
     });
 
-    // 4. Lightweight Cross-Device Live Polling (Checks server revision every 3.5s & on tab focus)
+    // 4. Lightweight Cross-Device Live Polling (Checks server revision periodically & on tab focus)
     const unSubLivePolling = homeServerSyncEnabled
       ? startLiveSyncPolling(tId, async () => {
           try {
             await pullDeltaFromHomeServer(tId);
           } catch (_) {}
-        }, 3500)
+        }, 30000)
       : () => {};
 
     const handleOnline = () => {

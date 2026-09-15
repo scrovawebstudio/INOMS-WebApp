@@ -129,13 +129,13 @@ export async function checkServerRevision(tenantId: string): Promise<number> {
 
 /**
  * Active Cross-Device Live Polling Service
- * Checks Home Server revision every intervalMs (default 3.5s) and immediately on tab focus.
+ * Checks Home Server revision periodically and on tab focus.
  * When a remote device makes an edit, onRemoteDelta is triggered to update the live UI.
  */
 export function startLiveSyncPolling(
   tenantId: string,
   onRemoteDelta: () => Promise<void> | void,
-  intervalMs = 3000
+  intervalMs = 60000
 ): () => void {
   if (!tenantId || typeof window === 'undefined') return () => {};
 
@@ -150,13 +150,20 @@ export function startLiveSyncPolling(
         lastKnownRev = meta.revision;
       }
     } catch (_) {}
-    runCheck();
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      runCheck();
+    }
   }).catch(() => {
-    runCheck();
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      runCheck();
+    }
   });
 
   const runCheck = async () => {
     if (isChecking || !navigator.onLine) return;
+    // Don't poll when tab is backgrounded or hidden
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
     isChecking = true;
     try {
       const serverRev = await checkServerRevision(tenantId);

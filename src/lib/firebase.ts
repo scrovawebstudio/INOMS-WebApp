@@ -143,14 +143,20 @@ export async function fetchTenantsOnce(force = false): Promise<TenantOrg[]> {
           st => st && st.id && !currentDeleted.has(st.id) && st.id !== 'global_system_branding'
         );
 
+        // Merge with locally registered or cached organizations so newly created tenants are not wiped out
+        const serverIds = new Set(validServerTenants.map(t => t.id));
+        const retainedLocals = (cachedTenants || []).filter(
+          lt => lt && lt.id && !serverIds.has(lt.id) && !currentDeleted.has(lt.id) && lt.id !== 'global_system_branding'
+        );
+
         // Guard: If this tenant is currently undergoing an in-flight save/toggle, preserve local state
-        const combined = validServerTenants.map(st => {
+        const combined = [...validServerTenants.map(st => {
           if (inFlightTenantUpdates.has(st.id)) {
             const currentLocal = (cachedTenants || []).find(t => t.id === st.id);
             if (currentLocal) return currentLocal;
           }
           return st;
-        });
+        }), ...retainedLocals];
 
         const merged = ensureAdminActiveInList(combined);
         cachedTenants = merged;
@@ -217,10 +223,11 @@ export function subscribeTenants(onUpdate: (tenants: TenantOrg[]) => void) {
   // Fetch tenants immediately from server on subscription
   fetchTenantsOnce(true);
 
-  // Periodic polling every 6 seconds to synchronize changes across all browsers and devices
+  // Periodic polling every 60 seconds (was 6s) when tab is active
   const pollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     fetchTenantsOnce(true);
-  }, 6000);
+  }, 60000);
 
   const handleVisibilityOrFocus = () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
