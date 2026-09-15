@@ -1101,7 +1101,7 @@ export async function fetchServerInfo(): Promise<ProServerInfo> {
   }
 }
 
-export async function generateServerPairingToken(customServerUrl?: string): Promise<{
+export async function generateServerPairingToken(customServerUrl?: string, tenantId?: string): Promise<{
   success: boolean;
   code?: string;
   serverUrl?: string;
@@ -1115,11 +1115,12 @@ export async function generateServerPairingToken(customServerUrl?: string): Prom
     const token = getAuthToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
 
     const res = await apiFetch('/api/server/pairing-token', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ customServerUrl })
+      body: JSON.stringify({ customServerUrl, tenantId })
     });
     return await res.json();
   } catch (err: any) {

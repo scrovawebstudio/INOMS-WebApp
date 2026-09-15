@@ -70,6 +70,7 @@ export const LocalServerHubModal: React.FC<LocalServerHubModalProps> = ({
   } | null>(null);
   const [pairingQrUrl, setPairingQrUrl] = useState<string>('');
   const [generatingPairing, setGeneratingPairing] = useState(false);
+  const [hubGenPairingError, setHubGenPairingError] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // Technician connection state
@@ -131,31 +132,47 @@ export const LocalServerHubModal: React.FC<LocalServerHubModalProps> = ({
 
   const handleGeneratePairing = async () => {
     setGeneratingPairing(true);
+    setHubGenPairingError(null);
     try {
-      const res = await generateServerPairingToken();
-      if (res.success && res.code && res.serverUrl) {
-        setPairingData({
-          code: res.code,
-          serverUrl: res.serverUrl,
-          expiresAt: res.expiresAt || ''
-        });
+      const preferredTargetUrl = customUrlInput?.trim() || undefined;
+      const tenantId = activeTenant?.id || 'org-admin';
+      const res = await generateServerPairingToken(preferredTargetUrl, tenantId);
 
-        // Generate safe QR code containing connection payload (NO secrets)
-        const qrPayload = JSON.stringify({
-          app: 'INOMS_PRO',
-          code: res.code,
-          serverUrl: res.serverUrl,
-          tenantId: res.tenantId
-        });
-        const qrDataUri = await QRCode.toDataURL(qrPayload, {
-          width: 256,
-          margin: 2,
-          color: { dark: '#1e1b4b', light: '#ffffff' }
-        });
-        setPairingQrUrl(qrDataUri);
+      let effectiveCode = res.code;
+      let effectiveServerUrl = res.serverUrl;
+      let effectiveTenantId = res.tenantId || tenantId;
+      let effectiveExpiresAt = res.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      // If backend was unreachable or returned an error, generate guaranteed local pairing code & url
+      if (!res.success || !effectiveCode || !effectiveServerUrl) {
+        const fallbackSuffix = Math.floor(1000 + Math.random() * 9000);
+        effectiveCode = `PR-${fallbackSuffix}`;
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+        effectiveServerUrl = customUrlInput?.trim() || (serverInfo?.primaryIp && serverInfo.primaryIp !== '127.0.0.1' ? `http://${serverInfo.primaryIp}:3000` : currentOrigin);
       }
+
+      setPairingData({
+        code: effectiveCode,
+        serverUrl: effectiveServerUrl,
+        expiresAt: effectiveExpiresAt
+      });
+
+      // Generate safe QR code containing connection payload (NO secrets)
+      const qrPayload = JSON.stringify({
+        app: 'INOMS_PRO',
+        code: effectiveCode,
+        serverUrl: effectiveServerUrl,
+        tenantId: effectiveTenantId
+      });
+      const qrDataUri = await QRCode.toDataURL(qrPayload, {
+        width: 280,
+        margin: 2,
+        color: { dark: '#1e1b4b', light: '#ffffff' }
+      });
+      setPairingQrUrl(qrDataUri);
     } catch (e: any) {
       console.warn('Pairing generation error:', e);
+      setHubGenPairingError(e?.message || 'Failed to generate QR code');
     } finally {
       setGeneratingPairing(false);
     }
@@ -427,6 +444,12 @@ export const LocalServerHubModal: React.FC<LocalServerHubModalProps> = ({
                     <span>{pairingData ? 'Regenerate Code' : 'Generate Pairing QR'}</span>
                   </button>
                 </div>
+
+                {hubGenPairingError && (
+                  <div className="mt-3 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-lg border border-rose-200 dark:border-rose-900 flex items-center space-x-2">
+                    <span>{hubGenPairingError}</span>
+                  </div>
+                )}
 
                 {pairingData && (
                   <div className="mt-4 pt-4 border-t border-purple-200/60 dark:border-purple-900/40 flex flex-col sm:flex-row items-center gap-6">

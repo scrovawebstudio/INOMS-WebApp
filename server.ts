@@ -83,6 +83,29 @@ async function startServer() {
   }
 
   if (process.env.NODE_ENV !== 'production') {
+    // 1. If an old production build or client requests static bundle files from /assets/,
+    // serve them directly if present in dist/assets so old cached tabs don't fail.
+    const distAssetsPath = path.join(process.cwd(), 'dist', 'assets');
+    if (fs.existsSync(distAssetsPath)) {
+      app.use('/assets', express.static(distAssetsPath));
+    }
+
+    // 2. Intercept stale bundle requests (e.g. /assets/index-*.js or /assets/index-*.css) from old cached tabs
+    // so Vite does not attempt to pre-transform a non-existent hashed asset file.
+    app.use('/assets', (req, res, next) => {
+      if (req.path.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.status(200).send('/* Stale bundle asset requested from cached client. Please refresh the page. */');
+      }
+      if (req.path.endsWith('.css')) {
+        res.setHeader('Content-Type', 'text/css');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.status(200).send('/* Stale stylesheet requested from cached client. */');
+      }
+      next();
+    });
+
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
@@ -98,6 +121,11 @@ async function startServer() {
     app.use(express.static(distPath));
 
     app.get('*', (_req, res) => {
+      // Prevent browser from caching index.html so hash updates never cause stale bundle errors
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);

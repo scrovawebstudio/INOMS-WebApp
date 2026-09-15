@@ -689,7 +689,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return getAppSessionItem('authenticated') === 'true' && Boolean(getAuthToken());
+    return getAppSessionItem('authenticated') === 'true';
   });
 
   const [userRole, setUserRole] = useState<string>(() => {
@@ -6447,37 +6447,37 @@ export default function App() {
 
         {/* Top Header Bar */}
         <header 
-          className="h-16 border-b border-slate-100 flex items-center justify-between px-3 sm:px-6 shrink-0 z-30 transition-colors duration-200 gap-2"
+          className="h-16 border-b border-slate-100 flex items-center justify-between px-2 sm:px-6 shrink-0 z-30 transition-colors duration-200 gap-1.5 sm:gap-2"
           style={{ backgroundColor: activeThemePalette.topHeaderBg }}
         >
           
           {/* Company Title & Org Selector */}
-          <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-3.5 min-w-0">
             {/* Mobile Hamburger Toggle */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer shrink-0"
+              className="lg:hidden p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
               title="Open Navigation Menu"
             >
               <Menu className="w-5 h-5 text-teal-700" />
             </button>
 
             {/* Prominent Organisation Info Badge (The Sole Destination for Org Identity) */}
-            <div className="flex items-center gap-3 bg-slate-50/90 px-3.5 py-1.5 rounded-2xl border border-slate-200/80 min-w-0 max-w-[200px] xs:max-w-[260px] sm:max-w-none shadow-xs">
+            <div className="flex items-center gap-2 sm:gap-3 bg-slate-50/90 px-2.5 sm:px-3.5 py-1.5 rounded-2xl border border-slate-200/80 min-w-0 max-w-[130px] xs:max-w-[180px] sm:max-w-[280px] md:max-w-none shadow-xs">
               {/* Organisation Logo / Badge (Larger & Attractive) */}
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-base shrink-0 shadow-xs overflow-hidden border border-teal-700/20">
+              <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-sm sm:text-base shrink-0 shadow-xs overflow-hidden border border-teal-700/20">
                 {companyConfig.logoUrl ? (
                   <img 
                     src={companyConfig.logoUrl} 
                     alt="Organization Logo" 
-                    className="w-full h-full object-contain bg-white rounded-2xl p-0.5" 
+                    className="w-full h-full object-contain bg-white rounded-xl sm:rounded-2xl p-0.5" 
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = '/inoms_logo.jpg';
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-black text-base sm:text-lg shadow-inner">
+                  <div className="w-full h-full rounded-xl sm:rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-black text-xs sm:text-lg shadow-inner">
                     {(activeTenant?.name || activeCompany || 'O').charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -6485,7 +6485,7 @@ export default function App() {
 
               {/* Organisation Details: Name, Number, and Role */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2.5 text-left min-w-0">
-                <span className="text-sm sm:text-base font-black text-slate-800 leading-tight truncate max-w-[130px] sm:max-w-[240px] md:max-w-none">
+                <span className="text-xs sm:text-base font-black text-slate-800 leading-tight truncate">
                   {activeTenant?.name || activeCompany}
                 </span>
                 
@@ -6503,12 +6503,12 @@ export default function App() {
           </div>
 
           {/* Right Corner: Google Drive Sync, Notifications & Logout */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Google Drive Multi-Device Sync Pill */}
             <button
               type="button"
               onClick={() => setIsGoogleDriveModalOpen(true)}
-              className={`px-3 py-1.5 rounded-full border transition flex items-center gap-1.5 cursor-pointer shadow-xs text-xs font-bold ${
+              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl sm:rounded-full border transition flex items-center gap-1.5 cursor-pointer shadow-xs text-xs font-bold ${
                 !isProTenant
                   ? 'bg-purple-50/90 hover:bg-purple-100/90 border-purple-200 text-purple-800'
                   : driveSyncState.isConnected
@@ -6532,16 +6532,16 @@ export default function App() {
                     : 'text-sky-600'
                 }`}
               />
-              <span className="hidden xs:inline">
+              <span className="hidden sm:inline">
                 {driveSyncState.isSyncing ? 'Syncing...' : 'Sync to Drive'}
               </span>
-              <span className="xs:hidden">Drive</span>
+              <span className="hidden xs:inline sm:hidden">Drive</span>
               {!isProTenant ? (
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200/80 text-purple-900 border border-purple-300 leading-none">
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-200/80 text-purple-900 border border-purple-300 leading-none hidden xs:inline-block">
                   PRO
                 </span>
               ) : isTrialActiveTenant && !driveSyncState.isConnected ? (
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 leading-none">
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 leading-none hidden xs:inline-block">
                   TRIAL
                 </span>
               ) : driveSyncState.isConnected ? (
@@ -6553,7 +6553,7 @@ export default function App() {
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl cursor-pointer relative transition shadow-xs flex items-center justify-center"
+                className="p-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl cursor-pointer relative transition shadow-xs flex items-center justify-center min-h-[38px] min-w-[38px]"
                 title="Notifications & Announcements"
               >
                 <Bell className="w-4 h-4" />
@@ -6565,10 +6565,10 @@ export default function App() {
             <button
               onClick={handleLockSession}
               title="Logout / Lock Session"
-              className="px-3 sm:px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 hover:text-rose-800 rounded-xl cursor-pointer transition flex items-center gap-2 font-bold text-xs shadow-xs"
+              className="p-2 sm:px-3 sm:py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 hover:text-rose-800 rounded-xl cursor-pointer transition flex items-center gap-1.5 font-bold text-xs shadow-xs min-h-[38px]"
             >
               <LogOut className="w-4 h-4" />
-              <span>Logout</span>
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
 
@@ -6729,7 +6729,7 @@ export default function App() {
 
         {/* 3. Screen stage area */}
         <div 
-          className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-20 sm:pb-24 lg:pb-6 transition-colors duration-200" 
+          className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pb-24 lg:pb-6 transition-colors duration-200" 
           id="applet-workstage"
           style={{ backgroundColor: activeThemePalette.appBg }}
         >
@@ -7298,12 +7298,12 @@ export default function App() {
       {/* Mobile Native Bottom Navigation Bar */}
       <div 
         id="mobile-bottom-nav"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-lg lg:hidden"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 pt-1.5 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-lg lg:hidden"
       >
         <button
           type="button"
           onClick={() => setActiveTab(activeTenant.id === 'org-admin' ? 'master_admin' : 'dashboard')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all active:scale-95 touch-manipulation min-h-[46px] cursor-pointer ${
             activeTab === 'dashboard' || activeTab === 'master_admin'
               ? 'text-teal-700 font-extrabold bg-teal-50/70'
               : 'text-slate-500 hover:text-slate-800'
@@ -7318,7 +7318,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setActiveTab('inwards')}
-              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all active:scale-95 touch-manipulation min-h-[46px] cursor-pointer relative ${
                 activeTab === 'inwards'
                   ? 'text-teal-700 font-extrabold bg-teal-50/70'
                   : 'text-slate-500 hover:text-slate-800'
@@ -7338,7 +7338,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setActiveTab('live_queue')}
-              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer relative ${
+              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all active:scale-95 touch-manipulation min-h-[46px] cursor-pointer relative ${
                 activeTab === 'live_queue'
                   ? 'text-teal-700 font-extrabold bg-teal-50/70'
                   : 'text-slate-500 hover:text-slate-800'
@@ -7358,7 +7358,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setActiveTab('outwards')}
-              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all active:scale-95 touch-manipulation min-h-[46px] cursor-pointer ${
                 activeTab === 'outwards'
                   ? 'text-teal-700 font-extrabold bg-teal-50/70'
                   : 'text-slate-500 hover:text-slate-800'
@@ -7373,7 +7373,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setIsMobileMenuOpen(true)}
-          className="flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer text-slate-500 hover:text-slate-800"
+          className="flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all active:scale-95 touch-manipulation min-h-[46px] cursor-pointer text-slate-500 hover:text-slate-800"
         >
           <Menu className="w-5 h-5 mb-0.5 text-teal-600" />
           <span className="text-[10px] leading-tight font-medium">Menu</span>

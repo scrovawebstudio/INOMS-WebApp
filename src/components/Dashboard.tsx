@@ -291,17 +291,20 @@ export default function Dashboard({
   return (
     <div className="space-y-6" id="dashboard-container">
       {/* Top Welcome Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            Workshop Overview &amp; Live Operations <span className="text-xs bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-bold border border-teal-200">Live Station Intelligence</span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight flex flex-wrap items-center gap-2">
+            <span>Workshop Overview &amp; Live Operations</span>
+            <span className="text-[10px] sm:text-xs bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-bold border border-teal-200">
+              Live Station Intelligence
+            </span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">Real-time status indicators, workbench queue, and job distribution graph across your organization.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={() => onNavigate('live_queue')}
-            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-teal-300 text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-xs hover:shadow-md cursor-pointer border border-slate-700"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-teal-300 text-xs font-bold px-3 sm:px-4 py-2.5 rounded-xl transition shadow-xs hover:shadow-md cursor-pointer border border-slate-700 min-h-[40px]"
           >
             <Layers className="w-4 h-4 text-teal-400" />
             <span>Open Live Queue</span>
@@ -311,7 +314,7 @@ export default function Dashboard({
             disabled={isSyncing}
             id="sync-data-btn"
             title={`Click to trigger manual data sync with Home Server. Last synced: ${lastSyncedAt || 'Just now'}`}
-            className={`flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-xs hover:shadow-md cursor-pointer border ${
+            className={`flex-1 sm:flex-none justify-center flex items-center gap-2 text-xs font-bold px-3 sm:px-4 py-2.5 rounded-xl transition shadow-xs hover:shadow-md cursor-pointer border min-h-[40px] ${
               isSyncing
                 ? 'bg-teal-600 text-white border-teal-500 shadow-teal-500/20 animate-pulse'
                 : justSynced

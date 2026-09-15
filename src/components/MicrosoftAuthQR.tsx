@@ -245,23 +245,21 @@ export async function verifyTOTP(
       }
       return false;
     }
-    // If master admin authentication failed on the server, strictly deny access
-    if (isMasterAdmin) {
-      return false;
-    }
+    // Server responded with an error (401 Unauthorized, 400 Bad Request, etc.)
+    // Strictly reject authentication; do not allow offline fallback when server explicitly rejected
+    return false;
   } catch (err) {
-    console.warn('API verify-totp call error in client:', err);
+    console.warn('API verify-totp network failure:', err);
+    // Only if server is unreachable (pure offline network outage) and user is NOT master admin
     if (isMasterAdmin) {
       return false;
     }
   }
 
-  // 2. Local client-side TOTP calculation (with clock drift tolerance) for offline orgs
-  if (secretBase32 && !isMasterAdmin) {
-    const timeOffsets: number[] = [];
-    for (let s = -600; s <= 600; s += 30) {
-      timeOffsets.push(s);
-    }
+  // 2. Strict client-side TOTP calculation ONLY during total network outage (offline mode)
+  // Must match exact HMAC-SHA1 RFC 6238 calculation against secretBase32
+  if (secretBase32 && !isMasterAdmin && typeof navigator !== 'undefined' && !navigator.onLine) {
+    const timeOffsets: number[] = [-60, -30, 0, 30, 60]; // Strict 1-minute drift window
     try {
       for (const off of timeOffsets) {
         const code = await generateTOTP(secretBase32, off);

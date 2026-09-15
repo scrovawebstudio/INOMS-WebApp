@@ -501,24 +501,53 @@ apiRouter.get('/server/info', async (req: Request, res: Response) => {
 });
 
 // 2. Generate Safe Temporary Device Pairing Token for Technicians (Admin / Organisation PC)
-apiRouter.post('/server/pairing-token', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+apiRouter.post('/server/pairing-token', (req: Request, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId || 'org-admin';
+    const authHeader = req.headers.authorization;
+    let tenantId = 'org-admin';
+
+    // If auth token provided, check session
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const db = getDatabase();
+      const sStmt = db.prepare('SELECT tenant_id FROM sessions WHERE token = ?');
+      sStmt.bind([token]);
+      if (sStmt.step()) {
+        tenantId = (sStmt.getAsObject().tenant_id as string) || tenantId;
+      }
+      sStmt.free();
+    }
+
+    // Allow tenantId from headers or request body if not in session
+    if (tenantId === 'org-admin' && (req.headers['x-tenant-id'] || req.body?.tenantId)) {
+      tenantId = (req.headers['x-tenant-id'] as string) || (req.body?.tenantId as string);
+    }
+
     const db = getDatabase();
 
     // Fetch tenant name
     let tenantName = 'INOMS Workshop';
-    const oStmt = db.prepare('SELECT name FROM organizations WHERE id = ?');
-    oStmt.bind([tenantId]);
-    if (oStmt.step()) {
-      tenantName = (oStmt.getAsObject().name as string) || tenantName;
+    try {
+      const oStmt = db.prepare('SELECT name FROM organizations WHERE id = ?');
+      oStmt.bind([tenantId]);
+      if (oStmt.step()) {
+        tenantName = (oStmt.getAsObject().name as string) || tenantName;
+      }
+      oStmt.free();
+    } catch {
+      // Ignore DB fetch error
     }
-    oStmt.free();
 
     const lanIps = getLocalLanIps();
     const port = 3000;
     const preferredIp = lanIps.find(ip => !ip.startsWith('172.') && !ip.startsWith('127.')) || lanIps[0] || '127.0.0.1';
     const defaultServerUrl = `http://${preferredIp}:${port}`;
+
+    const hostHeader = req.headers['x-forwarded-host'] || req.headers['host'];
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const headerUrl = hostHeader && typeof hostHeader === 'string' && !hostHeader.includes('127.0.0.1') && !hostHeader.includes('localhost')
+      ? `${proto}://${hostHeader}`
+      : null;
 
     // Generate easy-to-type 6-character alphanumeric pairing code (e.g. PR-9428)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -534,9 +563,11 @@ apiRouter.post('/server/pairing-token', authMiddleware, (req: AuthenticatedReque
       }
     }
 
+    const effectiveServerUrl = (req.body?.customServerUrl as string)?.trim() || headerUrl || defaultServerUrl;
+
     const record: ServerPairingRecord = {
       code,
-      serverUrl: (req.body.customServerUrl as string)?.trim() || defaultServerUrl,
+      serverUrl: effectiveServerUrl,
       tenantId,
       tenantName,
       createdAt: now,

@@ -1187,26 +1187,27 @@ export default function AuthModal({
                 }}
               />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white">Welcome to INOMS</h2>
-                <span className="bg-teal-500/20 text-teal-300 text-[9px] sm:text-[10px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full border border-teal-500/30">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h2 className="text-base sm:text-xl font-bold tracking-tight text-white leading-tight">Welcome to INOMS</h2>
+                <span className="hidden xs:inline-block bg-teal-500/20 text-teal-300 text-[9px] sm:text-[10px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full border border-teal-500/30 whitespace-nowrap">
                   Management made easy
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5">Mobile Approval & Organization Isolation System</p>
+              <p className="text-[10px] sm:text-xs text-slate-300 mt-0.5 truncate">Mobile Approval &amp; Org Isolation System</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setShowSupabaseConfigModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 rounded-xl transition cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 rounded-xl transition cursor-pointer shadow-xs"
               title="Configure Supabase Cloud Database"
             >
               <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Supabase DB</span>
+              <span className="hidden sm:inline">Supabase DB</span>
+              <span className="sm:hidden">DB</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             </button>
             {onClose && (

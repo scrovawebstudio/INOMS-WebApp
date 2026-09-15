@@ -11,6 +11,19 @@
   html, body {
     @apply font-sans antialiased text-slate-700 bg-slate-50/40;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior-y: contain;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  /* Support for Android edge-to-edge displays and notch cutouts */
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
   }
 
   /* Beautiful high-quality display headings */
@@ -28,6 +41,16 @@
   }
   ::-webkit-scrollbar-thumb {
     @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+  }
+
+  /* Prevent awkward zooming/overflow on mobile inputs */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: inherit !important;
+    }
   }
 }
 
