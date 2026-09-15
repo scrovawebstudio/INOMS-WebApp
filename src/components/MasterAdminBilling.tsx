@@ -298,10 +298,10 @@ export default function MasterAdminBilling({
   // Filtered Invoices
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch =
-      inv.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.ownerMobile.includes(searchTerm) ||
-      inv.tenantCode.toLowerCase().includes(searchTerm.toLowerCase());
+      (inv.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (inv.tenantName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (inv.ownerMobile || '').includes(searchTerm) ||
+      (inv.tenantCode || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     if (statusFilter === 'Paid') return matchesSearch && inv.paymentStatus === 'Paid';
     if (statusFilter === 'Unpaid') return matchesSearch && inv.paymentStatus !== 'Paid';

@@ -634,9 +634,9 @@ export default function MasterAdminDashboard({
 
   const filteredTenants = visibleTenants.filter(t => {
     const matchesSearch =
-      t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.ownerMobile.includes(searchTerm) ||
+      (t.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.ownerMobile || '').includes(searchTerm) ||
       (t.ownerName && t.ownerName.toLowerCase().includes(searchTerm.toLowerCase()));
     
     if (statusFilter === 'active') return matchesSearch && t.status === 'active';
@@ -752,7 +752,7 @@ Login Page: Access with registered mobile and PIN on the portal.`;
   };
 
   return (
-    <div className="space-y-6 mx-auto pb-12">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
       
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 p-4 sm:p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-4">

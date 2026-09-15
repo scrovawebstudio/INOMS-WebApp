@@ -982,15 +982,26 @@ export default function AuthModal({
       return;
     }
 
-    const adminOrg = tenants.find(t => t.ownerMobile.includes('8149862034') || t.id === 'org-admin' || t.code === 'ADMIN-00') || INITIAL_TENANTS[0];
+    const adminOrg =
+      tenants.find(
+        t =>
+          t.id === 'org-admin' ||
+          t.code === 'ADMIN-00' ||
+          (t.ownerMobile && t.ownerMobile.includes('8149862034'))
+      ) || INITIAL_TENANTS[0];
 
-    // Master Admin verification
-    const isValid = await verifyMasterPinViaApi(cleanCode);
+    try {
+      // Master Admin verification
+      const isValid = await verifyMasterPinViaApi(cleanCode);
 
-    if (isValid) {
-      onAuthenticated(adminOrg, 'Admin');
-    } else {
-      setPinError('Invalid 6-digit passcode or Master PIN. Access denied.');
+      if (isValid) {
+        onAuthenticated(adminOrg, 'Admin');
+      } else {
+        setPinError('Invalid 6-digit passcode or Master PIN. Access denied.');
+      }
+    } catch (err: any) {
+      console.error('Master PIN verification error:', err);
+      setPinError('Verification failed. Please check your connection and try again.');
     }
   };
 

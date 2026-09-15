@@ -233,9 +233,9 @@ export default function Clients({
 
   // Filter SaaS Tenant Organizations if Admin
   const filteredTenants = tenants.filter(t =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.ownerMobile.includes(searchTerm)
+    (t.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t.ownerMobile || '').includes(searchTerm)
   );
 
   const handleOpenAdd = () => {

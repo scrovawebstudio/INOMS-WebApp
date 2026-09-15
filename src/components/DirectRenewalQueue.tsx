@@ -73,7 +73,7 @@ export default function DirectRenewalQueue({
   };
 
   const handleOpenWhatsAppToOwner = (req: SubscriptionRenewalRequest) => {
-    const rawMobile = req.ownerMobile.replace(/\D/g, '');
+    const rawMobile = (req.ownerMobile || '').replace(/\D/g, '');
     const mobile10 = rawMobile.slice(-10);
     const text = encodeURIComponent(
       `Hello ${req.ownerName || 'Admin'},\n\n` +

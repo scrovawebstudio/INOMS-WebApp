@@ -1,6 +1,4 @@
-# Exclude API endpoints from static index.html rewrite to prevent HTTP 405 Method Not Allowed
-/api/*  /api/:splat  200
-
-# Cloudflare Pages SPA fallback: routes remaining non-API page requests to index.html
-/*      /index.html  200
+# Cloudflare Pages / Workers Redirects
+# When using Cloudflare Workers with [assets] and not_found_handling = "single-page-application",
+# do NOT add /* /index.html 200 here as Cloudflare Asset router flags it as an infinite redirect loop (code: 100324).
 
